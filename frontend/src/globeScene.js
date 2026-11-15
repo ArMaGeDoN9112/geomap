@@ -66,6 +66,33 @@ function makeCanvas(width, height) {
   return canvas.getContext('2d')
 }
 
+function paintTerrain(context, image, grid) {
+  const { width, height } = context.canvas
+  const mercatorY = (latitude) => {
+    const angle = Math.max(-85.05112878, Math.min(85.05112878, latitude)) * radians
+    return image.height * (0.5 - Math.asinh(Math.tan(angle)) / (2 * Math.PI))
+  }
+  for (let row = 0; row < height; row++) {
+    const y = Math.min(image.height - 1, Math.max(0, mercatorY(90 - (row + 0.5) * 180 / height)))
+    context.drawImage(image, 0, y, image.width, 1, 0, row, width, 1)
+  }
+
+  // Tint the existing ocean pixels by depth while keeping the detailed Natural Earth coastline.
+  const pixels = context.getImageData(0, 0, width, height)
+  const data = pixels.data
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const offset = 4 * (y * width + x)
+      if (data[offset + 2] - data[offset] < 16) continue
+      const depth = Math.min(1, Math.max(0, -elevationAt(grid, (x + 0.5) / width, (y + 0.5) / height) / 8500))
+      data[offset] *= 1 - 0.67 * depth
+      data[offset + 1] *= 1 - 0.46 * depth
+      data[offset + 2] *= 1 - 0.30 * depth
+    }
+  }
+  context.putImageData(pixels, 0, 0)
+}
+
 function ringsOf({ type, coordinates }) {
   if (type === 'MultiPolygon') return coordinates.flat()
   if (type === 'Polygon' || type === 'MultiLineString') return coordinates
@@ -109,17 +136,17 @@ function paintAtlas(context, atlas, political, pathFor) {
   for (const { geometry, properties } of atlas.lines?.features ?? []) {
     if (!geometry) continue
     const boundary = properties?.kind === 'boundary' || political
-    context.strokeStyle = boundary ? '#fff5ddae' : '#547f8b80'
+    context.strokeStyle = boundary ? (political ? '#4e514fa0' : '#fff5ddae') : '#547f8b80'
     context.lineWidth = 1
     context.stroke(pathFor(geometry))
   }
   for (const { object, path } of objects) {
     if (political) {
-      context.globalAlpha = 0.24
+      context.globalAlpha = 0.57
       context.fillStyle = countryColors[object.color - 1] ?? '#e5e7cb'
       context.fill(path, 'evenodd')
       context.globalAlpha = 1
-      context.strokeStyle = '#fff5ddae'
+      context.strokeStyle = '#4b6764'
       context.lineWidth = 1
       context.stroke(path)
     } else if (object.centerline) {
@@ -148,7 +175,8 @@ export function createGlobe(container, pinElement, atlas, political, grid, overv
   const renderer = new WebGLRenderer({ antialias: true, alpha: true })
   const width = Math.min(4096, renderer.capabilities.maxTextureSize)
   const base = makeCanvas(width, width / 2)
-  base.drawImage(overview, 0, 0, width, width / 2)
+  if (political) paintTerrain(base, overview, grid)
+  else base.drawImage(overview, 0, 0, width, width / 2)
   const pathFor = (geometry) => mapPath(geometry, (lon, lat) => [(lon + 180) * width / 360, (90 - lat) * width / 360])
   const objects = paintAtlas(base, atlas, political, pathFor)
   const paths = new Map(objects.map(({ object, path }) => [object.id, path]))
@@ -185,7 +213,7 @@ export function createGlobe(container, pinElement, atlas, political, grid, overv
   let pin = null
   let outlined = null
   let missedOutline = false
-  const imagery = globeImagery(material, (context, plan) => {
+  const imagery = political ? null : globeImagery(material, (context, plan) => {
     const { width: mosaicWidth, height: mosaicHeight } = context.canvas
     const offsets = [0]
     if (plan.left < 0) offsets.push(-360)
@@ -228,7 +256,7 @@ export function createGlobe(container, pinElement, atlas, political, grid, overv
     // A smaller angle keeps the terrain from rushing past the pointer at close range.
     controls.rotateSpeed = overviewRotationSpeed * Math.min(1, (camera.position.length() - 1) / 1.5)
     camera.updateMatrixWorld()
-    imagery.update(visibleArea(), renderer.domElement.width, renderer.domElement.height)
+    imagery?.update(visibleArea(), renderer.domElement.width, renderer.domElement.height)
     render()
   }
 
@@ -293,7 +321,7 @@ export function createGlobe(container, pinElement, atlas, political, grid, overv
       paint.drawImage(base.canvas, 0, 0)
       const object = catalog.get(id)
       if (object) strokeOutline(paint, paths.get(id) ?? pathFor(object.geometry), missed)
-      imagery.outline(object?.geometry, missed)
+      imagery?.outline(object?.geometry, missed)
       texture.needsUpdate = true
       render()
     },
@@ -323,7 +351,7 @@ export function createGlobe(container, pinElement, atlas, political, grid, overv
     dispose() {
       resizeObserver.disconnect()
       controls.dispose()
-      imagery.dispose()
+      imagery?.dispose()
       geometry.dispose()
       material.dispose()
       texture.dispose()

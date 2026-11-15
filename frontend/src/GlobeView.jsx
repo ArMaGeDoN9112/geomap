@@ -31,7 +31,7 @@ export default function GlobeView({ atlas, political, taskNumber, highlight, mar
     const container = element.current
     const controller = new AbortController()
     const overview = new Image()
-    overview.src = '/globe-satellite.jpg'
+    overview.src = political ? '/physical-relief.webp' : '/globe-satellite.jpg'
     setStatus('loading')
     setHovered(null)
 

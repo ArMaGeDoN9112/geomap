@@ -24,7 +24,7 @@ function objectAt(element) {
   return element?.closest?.('[data-object-id]')?.dataset.objectId
 }
 
-function FlatMap({ atlas, political, taskNumber, highlight, marker, feedback, onSelect }) {
+function FlatMap({ atlas, political, taskNumber, highlight, marker, feedback, onSelect, controlsTarget }) {
   const element = useRef(null)
   const mapState = useRef(null)
   const hovered = useRef(null)
@@ -297,6 +297,7 @@ function FlatMap({ atlas, political, taskNumber, highlight, marker, feedback, on
         zoomIn={() => mapState.current.map.zoomIn()}
         zoomOut={() => mapState.current.map.zoomOut()}
         reset={() => mapState.current.reset()}
+        target={controlsTarget}
       />
     </>
   )
@@ -308,40 +309,48 @@ function GlobeLoadError() {
 
 const GlobeView = lazy(() => import('./GlobeView').catch(() => ({ default: GlobeLoadError })))
 
-export function MapView({ globe, globeControls, ...props }) {
+export function MapView({ globe, ...props }) {
   const { political, atlas, taskNumber } = props
-  const config = atlas.list.map
   return (
     <section className="map-card" aria-label={political ? 'Политическая карта' : 'Физическая карта'}>
       <div className={`map-frame ${taskNumber !== undefined ? 'answer-map' : ''}`}>
         {globe ? (
           <Suspense fallback={<p className="globe-status" role="status">Загружаем глобус…</p>}>
-            <GlobeView {...props} controlsTarget={globeControls} />
+            <GlobeView {...props} />
           </Suspense>
         ) : <FlatMap {...props} />}
       </div>
-      <div className="map-footer">
-        <div className="map-legend" aria-label="Условные обозначения">
-          {political ? <span><i className="legend-country" /> Границы стран</span> : (
-            <>
-              <span><i className="legend-relief" /> Равнины и горы</span>
-              <span><i className="legend-river" /> Реки</span>
-              <span><i className="legend-water" /> Озёра</span>
-              {!globe && <span><i className="summit-symbol" /> Высшие точки</span>}
-              <span><i className="legend-boundary" /> Граница</span>
-            </>
-          )}
-        </div>
-        <div className="attribution">
-          {config.attributions.map(({ text, url }) => <a key={url} href={url} target="_blank" rel="noreferrer">{text}</a>)}
-          {globe && <a href="https://www.ncei.noaa.gov/products/etopo-global-relief-model" target="_blank" rel="noreferrer">NOAA ETOPO 2022</a>}
-          {globe && (
-            <a href="https://cloudless.eox.at/" target="_blank" rel="noreferrer">
-              EOxCloudless by EOX IT Services GmbH · modified Copernicus Sentinel data 2016 &amp; 2017
-            </a>
-          )}
-        </div>
+      <div className="map-footers">
+        <MapFooter atlas={atlas} political={political} globe={false} active={!globe} />
+        <MapFooter atlas={atlas} political={political} globe active={globe} />
       </div>
     </section>
+  )
+}
+
+function MapFooter({ atlas, political, globe, active }) {
+  return (
+    <div className="map-footer" aria-hidden={active ? undefined : true}>
+      <div className="map-legend" aria-label="Условные обозначения">
+        {political ? <span><i className="legend-country" /> Границы стран</span> : (
+          <>
+            <span><i className="legend-relief" /> Равнины и горы</span>
+            <span><i className="legend-river" /> Реки</span>
+            <span><i className="legend-water" /> Озёра</span>
+            {!globe && <span><i className="summit-symbol" /> Высшие точки</span>}
+            <span><i className="legend-boundary" /> Граница</span>
+          </>
+        )}
+      </div>
+      <div className="attribution">
+        {atlas.list.map.attributions.map(({ text, url }) => <a key={url} href={url} target="_blank" rel="noreferrer">{text}</a>)}
+        {globe && <a href="https://www.ncei.noaa.gov/products/etopo-global-relief-model" target="_blank" rel="noreferrer">NOAA ETOPO 2022</a>}
+        {globe && !political && (
+          <a href="https://cloudless.eox.at/" target="_blank" rel="noreferrer">
+            EOxCloudless by EOX IT Services GmbH · modified Copernicus Sentinel data 2016 &amp; 2017
+          </a>
+        )}
+      </div>
+    </div>
   )
 }

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 test('fetches more detailed satellite tiles on zoom and redraws the selected region', async ({ page }) => {
-  await page.goto('/world?category=south-america')
+  await page.goto('/russia?category=south-america')
   const tile = await page.evaluate(() => {
     const canvas = document.createElement('canvas')
     canvas.width = canvas.height = 256
@@ -19,10 +19,14 @@ test('fetches more detailed satellite tiles on zoom and redraws the selected reg
     await route.fulfill({ contentType: 'image/png', body: Buffer.from(tile, 'base64'), headers: { 'access-control-allow-origin': '*' } })
   })
   const overview = page.waitForResponse((response) => response.url().endsWith('/globe-satellite.jpg'))
+  const flat = page.getByLabel('Интерактивная карта мира')
+  await expect(flat).toBeVisible()
+  const flatArea = await flat.boundingBox()
   await page.getByRole('button', { name: '3D', exact: true }).click()
   const globe = page.getByRole('region', { name: 'Интерактивный глобус' })
   await expect(globe.locator('canvas')).toBeVisible({ timeout: 15_000 })
   expect((await overview).ok()).toBe(true)
+  expect(await globe.boundingBox()).toEqual(flatArea)
   expect(levels.size).toBe(0)
   const zoom = page.getByRole('button', { name: 'Приблизить' })
   for (let click = 0; click < 4; click++) await zoom.click()
@@ -34,14 +38,15 @@ test('fetches more detailed satellite tiles on zoom and redraws the selected reg
   const before = await globe.screenshot()
   release()
   await expect.poll(async () => (await globe.screenshot()).equals(before)).toBe(false)
-
-  const { x, y, width, height } = await globe.boundingBox()
-  await page.mouse.move(x + width / 2, y + height / 2)
-  await expect(page.getByRole('tooltip')).toContainText('Бразилия')
 })
 
 test('switches to the globe, rotates it and answers with coordinates', async ({ page }) => {
-  await page.route('https://tiles.maps.eox.at/**', (route) => route.abort())
+  const satelliteRequests = []
+  page.on('request', (request) => {
+    if (request.url().includes('tiles.maps.eox.at') || request.url().endsWith('/globe-satellite.jpg')) {
+      satelliteRequests.push(request.url())
+    }
+  })
   await page.goto('/world?category=south-america')
   const flat = page.getByLabel('Интерактивная карта мира')
   const globe = page.getByLabel('Интерактивный глобус')
@@ -50,13 +55,16 @@ test('switches to the globe, rotates it and answers with coordinates', async ({ 
   const panel = page.getByRole('complementary', { name: 'Изучение' })
   await expect(twoD).toHaveAttribute('aria-pressed', 'true')
   await expect(flat.locator('path[data-object-id="country:bra"]')).toBeAttached()
+  await expect(panel.getByRole('group', { name: 'Управление картой' })).toBeVisible()
+  const relief = page.waitForResponse((response) => response.url().endsWith('/physical-relief.webp'))
   const flatArea = await flat.boundingBox()
   await threeD.click()
   await expect(globe.locator('canvas')).toBeVisible({ timeout: 15_000 })
+  expect((await relief).ok()).toBe(true)
   await expect(panel.getByRole('group', { name: 'Управление картой' })).toBeVisible()
   const { x, y, width, height } = await globe.boundingBox()
   const panelArea = await panel.boundingBox()
-  expect(height).toBeGreaterThan(flatArea.height)
+  expect({ x, y, width, height }).toEqual(flatArea)
   expect(height).toBeGreaterThan(page.viewportSize().height * 0.75)
   expect(panelArea.x).toBeGreaterThanOrEqual(x + width)
   await expect(panel.getByRole('button', { name: '3D', exact: true })).toBeFocused()
@@ -89,6 +97,7 @@ test('switches to the globe, rotates it and answers with coordinates', async ({ 
   const submitted = page.waitForRequest((request) => request.url().endsWith('/answer'))
   await page.mouse.click(center.x, center.y)
   const { latitude, longitude } = (await submitted).postDataJSON()
+  expect(satelliteRequests).toEqual([])
   expect(latitude).toBeCloseTo(-21.5, 0)
   expect(longitude).toBeGreaterThan(-54.5)
   expect(longitude).toBeLessThan(-52)
