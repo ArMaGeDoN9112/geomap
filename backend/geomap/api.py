@@ -4,13 +4,13 @@ from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID
 
-import psycopg
 from fastapi import FastAPI, Path as PathParam, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from sqlalchemy.exc import OperationalError
 from starlette.concurrency import run_in_threadpool
 
 from . import storage, training
@@ -135,7 +135,7 @@ async def task_conflict(_request, error):
     return JSONResponse(status_code=409, content={"detail": str(error)})
 
 
-@app.exception_handler(psycopg.OperationalError)
+@app.exception_handler(OperationalError)
 async def database_unavailable(_request, _error):
     return JSONResponse(status_code=503, content={"detail": "База данных временно недоступна"})
 
@@ -151,8 +151,7 @@ async def invalid_request(_request, error):
 
 @app.get("/api/health")
 def health():
-    with storage.connect() as db:
-        db.execute("SELECT 1")
+    storage.check_connection()
     return {"status": "ok"}
 
 

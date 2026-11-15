@@ -12,7 +12,7 @@ docker compose up --build -d --wait
 
 Документация API доступна на [localhost:8000/docs](http://localhost:8000/docs), проверка базы и API — на [localhost:8000/api/health](http://localhost:8000/api/health).
 
-API при старте создаёт таблицы и загружает список объектов из локальной выгрузки. PostgreSQL доступен контейнерам Compose и хранит данные в томе `pgdata`. Команда `docker compose down` останавливает сервисы и сохраняет том.
+API при старте создаёт таблицы через SQLAlchemy Core и загружает список объектов из локальной выгрузки. PostgreSQL доступен контейнерам Compose и хранит данные в томе `pgdata`. Команда `docker compose down` останавливает сервисы и сохраняет том.
 
 Для локальной разработки можно задать в файле `.env` переменные `API_PORT`, `CORS_ORIGINS` (через запятую) и `POSTGRES_PASSWORD`. Пароль из `.env` используется при создании базы в новом томе. Для разработки React по умолчанию разрешены `http://localhost:5173` и `http://127.0.0.1:5173`.
 

@@ -3,4 +3,5 @@ numpy==2.4.4
 psycopg[binary]==3.3.3
 pyproj==3.7.2
 shapely==2.1.2
+SQLAlchemy==2.0.57
 uvicorn==0.42.0

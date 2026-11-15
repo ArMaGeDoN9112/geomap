@@ -4,8 +4,9 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from psycopg import sql
 from shapely.geometry import shape
+from sqlalchemy import create_engine
+from sqlalchemy.schema import CreateSchema, DropSchema
 
 from geomap import storage, training
 from geomap.api import app
@@ -16,17 +17,21 @@ def client():
     if os.getenv("GEOMAP_TEST_DB") != "1":
         pytest.skip("Укажите параметры тестового PostgreSQL и GEOMAP_TEST_DB=1")
 
-    schema = sql.Identifier(f"test_{uuid4().hex}")
+    schema = f"test_{uuid4().hex}"
+    test_engine = create_engine(
+        storage.engine.url, connect_args={"options": f"-c search_path={schema}"}
+    )
     with storage.connect() as db:
-        db.execute(sql.SQL("CREATE SCHEMA {}").format(schema))
+        db.execute(CreateSchema(schema))
     try:
-        with pytest.MonkeyPatch.context() as env:
-            env.setenv("PGOPTIONS", f"-c search_path={schema.as_string()}")
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(storage, "engine", test_engine)
             with TestClient(app) as client:
                 yield client
     finally:
+        test_engine.dispose()
         with storage.connect() as db:
-            db.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(schema))
+            db.execute(DropSchema(schema, cascade=True))
 
 
 @pytest.fixture(scope="module")
