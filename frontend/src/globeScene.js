@@ -205,7 +205,7 @@ export function createGlobe(container, pinElement, atlas, political, grid, relie
   controls.enablePan = false
   controls.minDistance = 1.075
   controls.maxDistance = 15
-  controls.rotateSpeed = 0.55
+  const overviewRotationSpeed = 0.55
   const ray = new Raycaster()
   const pointer = new Vector2()
   ray.firstHitOnly = true
@@ -252,6 +252,8 @@ export function createGlobe(container, pinElement, atlas, political, grid, relie
   }
 
   function viewChanged() {
+    // A smaller angle keeps the terrain from rushing past the pointer at close range.
+    controls.rotateSpeed = overviewRotationSpeed * Math.min(1, (camera.position.length() - 1) / 1.5)
     camera.updateMatrixWorld()
     imagery.update(visibleArea(), renderer.domElement.width, renderer.domElement.height)
     render()
@@ -338,8 +340,9 @@ export function createGlobe(container, pinElement, atlas, political, grid, relie
       lookAt(longitude, latitude, Math.min(3.6, Math.max(1.085, 1.07 + span * radians * 2)))
     },
     rotate(horizontal, vertical) {
-      if (horizontal) controls.rotateLeft(horizontal)
-      if (vertical) controls.rotateUp(vertical)
+      const scale = controls.rotateSpeed / overviewRotationSpeed
+      if (horizontal) controls.rotateLeft(horizontal * scale)
+      if (vertical) controls.rotateUp(vertical * scale)
     },
     zoomIn: () => controls.dollyIn(0.75),
     zoomOut: () => controls.dollyOut(0.75),
