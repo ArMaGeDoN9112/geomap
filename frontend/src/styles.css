@@ -295,7 +295,6 @@ h1 {
   line-height: 1.13;
 }
 .activity h2 { margin: 18px 0 9px; }
-.activity select.field { margin-bottom: 14px; }
 .workspace > .loading { grid-area: 1 / 1; }
 .activity > p, dialog p, .perfect { color: var(--muted); font-size: 15px; line-height: 1.55; }
 .touch-hint, .hybrid-hint { display: none; }

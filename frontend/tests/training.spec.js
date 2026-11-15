@@ -142,7 +142,6 @@ test('political map shows capitals, grades clicks and asks before switching maps
   await page.getByRole('link', { name: 'Политическая', exact: true }).click()
   await expect(page).toHaveURL(/\/world$/)
   await expect(page.getByRole('heading', { name: 'Страны мира' })).toBeVisible()
-  await expect(page.getByLabel('Категория')).toHaveValue('world')
   const brazil = await areaPoint(page, 'country:bra', 4)
   expect(brazil).not.toBeNull()
   await page.mouse.move(brazil.x, brazil.y)
@@ -178,25 +177,28 @@ test('political map shows capitals, grades clicks and asks before switching maps
   await expect(page.getByRole('heading', { name: 'Изучение' })).toBeVisible()
 })
 
-for (const [route, category, shown, hidden] of [
-  ['/russia', 'africa', 'water', 'baikal'],
-  ['/world', 'south-america', 'country:bra', 'country:chn'],
+for (const [route, category, shown, hidden, antarcticCount] of [
+  ['/russia', 'africa', 'water', 'baikal', '5'],
+  ['/world', 'south-america', 'country:bra', 'country:chn', '1'],
 ]) {
   test(`selects a category and exercise count on ${route}`, async ({ page }) => {
     await page.goto(route)
-    const select = page.getByLabel('Категория')
-    await expect(select.locator('option[value="antarctica"]')).toHaveText('Антарктида')
-    await select.selectOption(category)
-    await expect(page).toHaveURL(new RegExp(`category=${category}$`))
     const start = page.getByRole('button', { name: 'Начать тренировку', exact: true })
     await expect(start).toBeEnabled()
-    await expect(mapCanvas(page).locator(`[data-object-id^="${shown}"]`).first()).toBeAttached()
-    await expect(mapCanvas(page).locator(`[data-object-id="${hidden}"]`)).toHaveCount(0)
+    await expect(page.getByLabel('Категория')).toHaveCount(0)
     await start.click()
-    const dialog = page.getByRole('dialog')
-    await dialog.getByLabel('Количество заданий').fill('3')
+    const dialog = page.getByRole('dialog', { name: 'Начать тренировку' })
+    const select = dialog.getByLabel('Категория')
+    const count = dialog.getByLabel('Количество заданий')
+    await select.selectOption('antarctica')
+    await expect(count).toHaveAttribute('max', antarcticCount)
+    await select.selectOption(category)
+    await expect(page).toHaveURL(new RegExp(`category=${category}$`))
+    await count.fill('3')
     await dialog.getByRole('button', { name: 'Начать', exact: true }).click()
     await expect(page.getByText('Задание 1 из 3', { exact: true })).toBeVisible()
+    await expect(mapCanvas(page).locator(`[data-object-id^="${shown}"]`).first()).toBeAttached()
+    await expect(mapCanvas(page).locator(`[data-object-id="${hidden}"]`)).toHaveCount(0)
   })
 }
 

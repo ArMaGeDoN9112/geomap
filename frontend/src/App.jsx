@@ -40,6 +40,7 @@ export function App() {
   if (category !== defaultCategory) shareUrl.searchParams.set('category', category)
 
   useEffect(() => {
+    if (ready) return
     const controller = new AbortController()
     const options = { signal: controller.signal }
     request(`${listEndpoint}?category=${encodeURIComponent(category)}`, options)
@@ -56,7 +57,7 @@ export function App() {
         if (!controller.signal.aborted) setLoadFailed(true)
       })
     return () => controller.abort()
-  }, [category, loadAttempt])
+  }, [category, loadAttempt, ready])
 
   useEffect(() => {
     if (!training) return
@@ -99,6 +100,7 @@ export function App() {
 
   function begin(event) {
     event.preventDefault()
+    if (!ready) return
     perform(async () => {
       leaving.current = false
       setRun(await request(`${listEndpoint}/training`, {
@@ -117,9 +119,15 @@ export function App() {
     setCategory(next)
     setCount(null)
     setLoadFailed(false)
+    setError('')
     const url = new URL(listPath, window.location.origin)
     if (next !== defaultCategory) url.searchParams.set('category', next)
     window.history.replaceState(null, '', url)
+  }
+
+  function retryLoad() {
+    setLoadFailed(false)
+    setLoadAttempt((attempt) => attempt + 1)
   }
 
   function submit(point) {
@@ -298,10 +306,6 @@ export function App() {
                     <>
                       <div className="panel-icon"><BookOpen size={24} /></div>
                       <h2>Изучение</h2>
-                      <label className="input-label" htmlFor="category">Категория</label>
-                      <select id="category" className="field" value={category} onChange={changeCategory}>
-                        {atlas.list.categories.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
-                      </select>
                       {political ? (
                         <>
                           <p className="desktop-hint">Наведи указатель на страну, чтобы узнать её название и столицу.</p>
@@ -340,10 +344,10 @@ export function App() {
                     if (point.needsConfirmation) setSelection(point)
                     else submit(point)
                   }}
-                /> : <MapLoading failed={loadFailed} political={political} retry={() => { setLoadFailed(false); setLoadAttempt(loadAttempt + 1) }} />}
+                /> : <MapLoading failed={loadFailed} political={political} retry={retryLoad} />}
               </div>
             ) : (
-              <MapLoading failed={loadFailed} political={political} retry={() => { setLoadFailed(false); setLoadAttempt(loadAttempt + 1) }} />
+              <MapLoading failed={loadFailed} political={political} retry={retryLoad} />
             )}
           </>
         )}
@@ -353,15 +357,23 @@ export function App() {
         <Dialog title={modal === 'start' ? 'Начать тренировку' : modal === 'exit' ? 'Выйти из тренировки?' : 'Ссылка на список'} onClose={() => setModal(null)} pending={pending}>
           {modal === 'start' && (
             <form onSubmit={begin}>
+              <label className="input-label" htmlFor="category">Категория</label>
+              <select id="category" className="field" value={category} onChange={changeCategory} disabled={pending} autoFocus>
+                {atlas.list.categories.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
+              </select>
               <label className="input-label" htmlFor="count">Количество заданий</label>
-              <input id="count" className="field" type="number" min="1" max={atlas.list.available_count}
-                required value={count ?? atlas.list.training_count} onChange={(event) => setCount(event.target.value)}
+              <input id="count" className="field" type="number" min="1" max={ready ? atlas.list.available_count : undefined}
+                required disabled={!ready || pending} value={ready ? (count ?? atlas.list.training_count) : ''}
+                onChange={(event) => setCount(event.target.value)}
                 aria-describedby="count-limit" />
-              <p id="count-limit">Доступно от 1 до {atlas.list.available_count}.</p>
+              <p id="count-limit" role="status">
+                {ready ? `Доступно от 1 до ${atlas.list.available_count}.` : loadFailed ? 'Не удалось загрузить категорию.' : 'Загружаем категорию…'}
+              </p>
+              {loadFailed && <button type="button" className="secondary" onClick={retryLoad}>Повторить</button>}
               <label className="input-label" htmlFor="student">Имя <span>по желанию</span></label>
               <input id="student" className="field" autoComplete="off" maxLength={100} value={name} onChange={(event) => setName(event.target.value)} placeholder="Например, Анна" />
               {error && <p className="error" role="alert">{error}</p>}
-              <button type="submit" className="primary dialog-primary" disabled={pending}>
+              <button type="submit" className="primary dialog-primary" disabled={!ready || pending}>
                 {pending ? 'Запускаем…' : 'Начать'} <ChevronRight size={18} />
               </button>
             </form>
