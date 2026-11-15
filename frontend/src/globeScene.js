@@ -5,6 +5,7 @@ import {
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { acceleratedRaycast, MeshBVH } from 'three-mesh-bvh'
 import { countryColors, mappedObjects } from './mapPresentation'
+import { globeImagery } from './globeImagery'
 
 const gridWidth = 1440
 const gridHeight = 720
@@ -99,12 +100,14 @@ function ringsOf({ type, coordinates }) {
   return []
 }
 
-function mapPath(geometry, width, height) {
+function mapPath(geometry, project, offsets = [0]) {
   const path = new Path2D()
-  for (const ring of ringsOf(geometry)) {
-    for (let index = 0; index < ring.length; index++) {
-      const [longitude, latitude] = ring[index]
-      path[index === 0 ? 'moveTo' : 'lineTo']((longitude + 180) * width / 360, (90 - latitude) * height / 180)
+  for (const offset of offsets) {
+    for (const ring of ringsOf(geometry)) {
+      for (let index = 0; index < ring.length; index++) {
+        const [longitude, latitude] = ring[index]
+        path[index === 0 ? 'moveTo' : 'lineTo'](...project(longitude + offset, latitude))
+      }
     }
   }
   return path
@@ -127,36 +130,45 @@ function focusPoint({ type, coordinates }) {
   return largest
 }
 
-function paintAtlas(context, atlas, political) {
-  const { width, height } = context.canvas
-  const pathFor = (geometry) => mapPath(geometry, width, height)
+function paintAtlas(context, atlas, political, pathFor, satellite = false) {
   const objects = mappedObjects(atlas.list.objects, political)
     .map((object) => ({ object, path: pathFor(object.geometry) }))
   for (const { geometry, properties } of atlas.lines?.features ?? []) {
     if (!geometry) continue
-    context.strokeStyle = properties?.kind === 'boundary' || political ? '#4e514fa0' : '#547f8b80'
+    const boundary = properties?.kind === 'boundary' || political
+    context.strokeStyle = boundary ? (satellite ? '#fff5ddae' : '#4e514fa0') : '#547f8b80'
     context.lineWidth = 1
     context.stroke(pathFor(geometry))
   }
   for (const { object, path } of objects) {
     if (political) {
-      context.globalAlpha = 0.57
+      context.globalAlpha = satellite ? 0.24 : 0.57
       context.fillStyle = countryColors[object.color - 1] ?? '#e5e7cb'
       context.fill(path, 'evenodd')
       context.globalAlpha = 1
-      context.strokeStyle = '#4b6764'
+      context.strokeStyle = satellite ? '#fff5ddae' : '#4b6764'
       context.lineWidth = 1
       context.stroke(path)
     } else if (object.centerline) {
-      context.strokeStyle = '#337999'
+      context.strokeStyle = satellite ? '#73bfd4' : '#337999'
       context.lineWidth = 1.25
       context.stroke(pathFor(object.centerline))
     } else if (object.kind === 'lake' || object.kind === 'river') {
-      context.fillStyle = '#82bad2'
+      context.fillStyle = satellite ? '#82bad266' : '#82bad2'
       context.fill(path, 'evenodd')
     }
   }
-  return { objects: objects.reverse(), pathFor }
+  return objects.reverse()
+}
+
+function strokeOutline(context, path, missed) {
+  context.lineJoin = 'round'
+  context.strokeStyle = '#fffdf2'
+  context.lineWidth = 5
+  context.stroke(path)
+  context.strokeStyle = missed ? '#b74318' : '#125b50'
+  context.lineWidth = 2.5
+  context.stroke(path)
 }
 
 export function createGlobe(container, pinElement, atlas, political, grid, relief) {
@@ -164,7 +176,8 @@ export function createGlobe(container, pinElement, atlas, political, grid, relie
   const width = Math.min(4096, renderer.capabilities.maxTextureSize)
   const base = makeCanvas(width, width / 2)
   paintTerrain(base, relief, grid)
-  const { objects, pathFor } = paintAtlas(base, atlas, political)
+  const pathFor = (geometry) => mapPath(geometry, (lon, lat) => [(lon + 180) * width / 360, (90 - lat) * width / 360])
+  const objects = paintAtlas(base, atlas, political, pathFor)
   const paths = new Map(objects.map(({ object, path }) => [object.id, path]))
   const catalog = new Map(atlas.list.objects.map((object) => [object.id, object]))
   const paint = makeCanvas(width, width / 2)
@@ -194,10 +207,55 @@ export function createGlobe(container, pinElement, atlas, political, grid, relie
   controls.maxDistance = 15
   controls.rotateSpeed = 0.55
   const ray = new Raycaster()
+  const pointer = new Vector2()
   ray.firstHitOnly = true
   let pin = null
   let outlined = null
   let missedOutline = false
+  const imagery = globeImagery(material, (context, plan) => {
+    const { width: mosaicWidth, height: mosaicHeight } = context.canvas
+    const offsets = [0]
+    if (plan.left < 0) offsets.push(-360)
+    if (plan.left + plan.width > plan.columns) offsets.push(360)
+    const localPath = (shape) => mapPath(shape, (lon, lat) => [
+      ((lon + 180) * plan.columns / 360 - plan.left) * mosaicWidth / plan.width,
+      ((90 - lat) * plan.rows / 180 - plan.top) * mosaicHeight / plan.height,
+    ], offsets)
+    paintAtlas(context, atlas, political, localPath, true)
+    return (target, shape, missed) => {
+      if (shape) strokeOutline(target, localPath(shape), missed)
+    }
+  }, render, width)
+
+  function hitAt(x, y) {
+    ray.setFromCamera(pointer.set(x, y), camera)
+    return ray.intersectObject(terrain)[0]
+  }
+
+  function visibleArea() {
+    if (camera.position.length() > 1.6) return null
+    const center = hitAt(0, 0)?.uv
+    if (!center) return null
+    let west = center.x, east = center.x, north = 1 - center.y, south = north
+    for (const y of [-1, -0.5, 0, 0.5, 1]) {
+      for (const x of [-1, -0.5, 0, 0.5, 1]) {
+        const uv = hitAt(x, y)?.uv
+        if (!uv) continue
+        const longitude = uv.x - Math.round(uv.x - center.x)
+        west = Math.min(west, longitude)
+        east = Math.max(east, longitude)
+        north = Math.min(north, 1 - uv.y)
+        south = Math.max(south, 1 - uv.y)
+      }
+    }
+    return east > west && south > north ? { west, east, north, south } : null
+  }
+
+  function viewChanged() {
+    camera.updateMatrixWorld()
+    imagery.update(visibleArea(), renderer.domElement.width, renderer.domElement.height)
+    render()
+  }
 
   function render() {
     renderer.render(scene, camera)
@@ -220,7 +278,7 @@ export function createGlobe(container, pinElement, atlas, political, grid, relie
     camera.aspect = clientWidth / clientHeight
     camera.updateProjectionMatrix()
     renderer.setSize(clientWidth, clientHeight, false)
-    render()
+    viewChanged()
   }
 
   function lookAt(longitude, latitude, distance) {
@@ -237,7 +295,7 @@ export function createGlobe(container, pinElement, atlas, political, grid, relie
     lookAt(world ? 18 : (west + east) / 2, world ? 22 : (south + north) / 2, distance)
   }
 
-  controls.addEventListener('change', render)
+  controls.addEventListener('change', viewChanged)
   const resizeObserver = new ResizeObserver(resize)
   resizeObserver.observe(container)
   resize()
@@ -245,8 +303,7 @@ export function createGlobe(container, pinElement, atlas, political, grid, relie
 
   return {
     pick(x = 0, y = 0) {
-      ray.setFromCamera(new Vector2(x, y), camera)
-      const hit = ray.intersectObject(terrain)[0]
+      const hit = hitAt(x, y)
       if (!hit) return null
       const { x: u, y: v } = hit.uv
       const longitude = Math.max(-180, Math.min(180, u * 360 - 180))
@@ -260,16 +317,8 @@ export function createGlobe(container, pinElement, atlas, political, grid, relie
       missedOutline = missed
       paint.drawImage(base.canvas, 0, 0)
       const object = catalog.get(id)
-      if (object) {
-        const path = paths.get(id) ?? pathFor(object.geometry)
-        paint.lineJoin = 'round'
-        paint.strokeStyle = '#fffdf2'
-        paint.lineWidth = 5
-        paint.stroke(path)
-        paint.strokeStyle = missed ? '#b74318' : '#125b50'
-        paint.lineWidth = 2.5
-        paint.stroke(path)
-      }
+      if (object) strokeOutline(paint, paths.get(id) ?? pathFor(object.geometry), missed)
+      imagery.outline(object?.geometry, missed)
       texture.needsUpdate = true
       render()
     },
@@ -298,6 +347,7 @@ export function createGlobe(container, pinElement, atlas, political, grid, relie
     dispose() {
       resizeObserver.disconnect()
       controls.dispose()
+      imagery.dispose()
       geometry.dispose()
       material.dispose()
       texture.dispose()

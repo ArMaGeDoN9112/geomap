@@ -29,6 +29,8 @@ npm run dev
 
 Для 3D используется [NOAA ETOPO 2022](https://www.ncei.noaa.gov/products/etopo-global-relief-model). Файл `frontend/public/etopo-2022.i16` получен из [выборки ETOPO Ice Surface](https://oceanwatch.pifsc.noaa.gov/erddap/griddap/ETOPO_2022_v1_60s.nc?z%5B7:15:10799%5D%5B7:15:21599%5D). В нём 1440 × 720 значений высот и глубин в метрах, округлённых до int16 little-endian, со строками с севера на юг и долготами от 180° з. д. до 180° в. д. Шаг 3D-сетки — 0,5°, вертикальный масштаб увеличен в 40 раз, чтобы рельеф был виден при обзоре планеты.
 
+При приближении 3D-глобус загружает спутниковые тайлы EOxCloudless 2016 для видимого участка. Снимки собраны из данных Copernicus Sentinel за 2016–2017 годы. Для подгрузки нужен доступ к `tiles.maps.eox.at`. До загрузки снимков и при недоступности сервиса показывается обзорная карта. [Данные EOxCloudless](https://cloudless.eox.at/documentation/faq) · [Лицензия CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+
 API при старте создаёт таблицы через SQLAlchemy Core и загружает список объектов из локальной выгрузки. PostgreSQL доступен контейнерам Compose и хранит данные в томе `pgdata`. Команда `docker compose down` останавливает сервисы и сохраняет том.
 
 Для локальной разработки можно задать в файле `.env` переменные `API_PORT`, `CORS_ORIGINS` (через запятую) и `POSTGRES_PASSWORD`. Пароль из `.env` используется при создании базы в новом томе. Для разработки React по умолчанию разрешены `http://localhost:5173` и `http://127.0.0.1:5173`.

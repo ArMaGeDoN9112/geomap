@@ -335,6 +335,11 @@ export function MapView({ globe, globeControls, ...props }) {
         <div className="attribution">
           {config.attributions.map(({ text, url }) => <a key={url} href={url} target="_blank" rel="noreferrer">{text}</a>)}
           {globe && <a href="https://www.ncei.noaa.gov/products/etopo-global-relief-model" target="_blank" rel="noreferrer">NOAA ETOPO 2022</a>}
+          {globe && (
+            <a href="https://cloudless.eox.at/" target="_blank" rel="noreferrer">
+              EOxCloudless by EOX IT Services GmbH · modified Copernicus Sentinel data 2016 &amp; 2017
+            </a>
+          )}
         </div>
       </div>
     </section>

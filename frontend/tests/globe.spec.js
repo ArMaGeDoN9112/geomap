@@ -1,5 +1,43 @@
 import { expect, test } from '@playwright/test'
 
+test('fetches more detailed satellite tiles on zoom and redraws the selected region', async ({ page }) => {
+  await page.goto('/world?category=south-america')
+  const tile = await page.evaluate(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = 256
+    const context = canvas.getContext('2d')
+    context.fillStyle = '#df3690'
+    context.fillRect(0, 0, 256, 256)
+    return canvas.toDataURL().split(',')[1]
+  })
+  const levels = new Set()
+  let release
+  const held = new Promise((resolve) => { release = resolve })
+  await page.route('https://tiles.maps.eox.at/**', async (route) => {
+    levels.add(Number(new URL(route.request().url()).pathname.split('/').at(-3)))
+    await held
+    await route.fulfill({ contentType: 'image/png', body: Buffer.from(tile, 'base64'), headers: { 'access-control-allow-origin': '*' } })
+  })
+  await page.getByRole('button', { name: '3D', exact: true }).click()
+  const globe = page.getByRole('region', { name: 'Интерактивный глобус' })
+  await expect(globe.locator('canvas')).toBeVisible({ timeout: 15_000 })
+  expect(levels.size).toBe(0)
+  const zoom = page.getByRole('button', { name: 'Приблизить' })
+  for (let click = 0; click < 4; click++) await zoom.click()
+  await expect.poll(() => levels.size).toBe(1)
+  await zoom.click()
+  await expect.poll(() => levels.size).toBe(2)
+  const [lower, higher] = levels
+  expect(higher).toBeGreaterThan(lower)
+  const before = await globe.screenshot()
+  release()
+  await expect.poll(async () => (await globe.screenshot()).equals(before)).toBe(false)
+
+  const { x, y, width, height } = await globe.boundingBox()
+  await page.mouse.move(x + width / 2, y + height / 2)
+  await expect(page.getByRole('tooltip')).toContainText('Бразилия')
+})
+
 test('switches to the globe, rotates it and answers with coordinates', async ({ page }) => {
   await page.goto('/world?category=south-america')
   const flat = page.getByLabel('Интерактивная карта мира')
