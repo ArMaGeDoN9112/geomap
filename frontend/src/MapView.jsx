@@ -1,22 +1,16 @@
-import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useEffectEvent, useRef, useState } from 'react'
 import L from 'leaflet'
-import { Crosshair, Minus, Plus } from 'lucide-react'
+import { MapControls, MapInspection, countryColors, mappedObjects } from './mapPresentation'
 
 const waterStyle = {
   color: '#387a99', weight: 0.8, fillColor: '#82bad2', fillOpacity: 1, smoothFactor: 0,
 }
 const invisibleArea = { stroke: false, fill: true, fillOpacity: 0, smoothFactor: 0 }
-const countryColors = [
-  '#e6c994', '#b9d7ae', '#edc2ab', '#b7c8e2', '#e2dca1', '#d5bfdf', '#a9d5cc',
-  '#ecc5cf', '#c7d6a4', '#f0d7aa', '#bcc8df', '#e4bca1', '#c6dcd6',
-]
 const outlineStyle = { color: '#125b50', weight: 3, fillColor: '#91d5ae', fillOpacity: 0.6, smoothFactor: 0, interactive: false }
 const physicalOutline = { ...outlineStyle, weight: 2, fill: false }
 const missedStyle = { ...outlineStyle, color: '#af4a23', fillColor: '#ef9e67', fillOpacity: 0.72 }
 const missedPhysicalOutline = { ...physicalOutline, color: missedStyle.color, weight: 3 }
-const formatPopulation = new Intl.NumberFormat('ru-RU', { notation: 'compact', maximumFractionDigits: 1 })
 const formatElevation = new Intl.NumberFormat('ru-RU')
-const physicalKinds = { river: 'Река', lake: 'Озеро', mountain: 'Горный массив' }
 const russianSeas = [
   [74.5, 37, 'Баренцево море'],
   [75, 73, 'Карское море'],
@@ -30,42 +24,7 @@ function objectAt(element) {
   return element?.closest?.('[data-object-id]')?.dataset.objectId
 }
 
-function ObjectTooltip({ object }) {
-  const { profile, capitals, name } = object
-  return (
-    <div id="map-tooltip" className="map-tooltip" role="tooltip">
-      <div className="map-tooltip-heading">
-        {profile?.flag && (
-          <span
-            className="map-tooltip-flag"
-            role="img"
-            aria-label={`Флаг · ${name}`}
-            style={{ '--flag-column': profile.flag[0], '--flag-row': profile.flag[1] }}
-          />
-        )}
-        <div>
-          <strong>{name}</strong>
-          {!!capitals?.length && <p>{capitals.length === 1 ? 'Столица' : 'Столицы'} · {capitals.join(', ')}</p>}
-        </div>
-      </div>
-      {profile ? (
-        <div className="map-tooltip-facts">
-          <p>{profile.region}</p>
-          {profile.population > 0 && (
-            <p>Население · {formatPopulation.format(profile.population)} чел. ({profile.population_year})</p>
-          )}
-        </div>
-      ) : object.region && (
-        <p>{physicalKinds[object.kind]} · {object.region}</p>
-      )}
-      {object.summit && (
-        <p>Высшая точка · {object.summit.name}, {formatElevation.format(object.summit.elevation)} м</p>
-      )}
-    </div>
-  )
-}
-
-export function MapView({ atlas, political, taskNumber, highlight, marker, feedback, onSelect }) {
+function FlatMap({ atlas, political, taskNumber, highlight, marker, feedback, onSelect }) {
   const element = useRef(null)
   const mapState = useRef(null)
   const hovered = useRef(null)
@@ -166,13 +125,7 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
       L.latLng(latitude, russia && longitude < 0 ? longitude + 360 : longitude)
     const catalog = new Map(objects.map((object) => [object.id, object]))
     const summitMarkers = []
-    // Water features stay selectable where rivers and lakes cross a mountain area.
-    const mapObjects = political ? objects : [
-      ...objects.filter((object) => object.kind === 'mountain'),
-      ...objects.filter((object) => object.kind === 'river'),
-      ...objects.filter((object) => object.kind === 'lake'),
-    ]
-    for (const object of mapObjects) {
+    for (const object of mappedObjects(objects, political)) {
       const style = political ? {
         color: '#647b74', weight: 0.7, fillColor: countryColors[object.color - 1] ?? '#e5e7cb',
         fillOpacity: 1, smoothFactor: 0,
@@ -330,27 +283,46 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
   }, [marker, highlight, feedback, russia])
 
   return (
+    <>
+      <div
+        className={`map-canvas${political ? ' political-map' : ''}`}
+        ref={element}
+        aria-label={russia ? 'Интерактивная карта России' : 'Интерактивная карта мира'}
+        aria-describedby={!training && inspected ? 'keyboard-guide map-tooltip' : 'keyboard-guide'}
+      />
+      <span id="keyboard-guide" className="sr-only">Стрелки перемещают карту. Enter выбирает точку в центре карты.</span>
+      <MapInspection object={!training && inspected} />
+      <div className="map-north" aria-hidden="true"><span>С</span><span>▲</span></div>
+      <MapControls
+        zoomIn={() => mapState.current.map.zoomIn()}
+        zoomOut={() => mapState.current.map.zoomOut()}
+        reset={() => mapState.current.reset()}
+      />
+    </>
+  )
+}
+
+function GlobeLoadError() {
+  return <p className="globe-status" role="alert">Не удалось открыть глобус. Выбери 2D.</p>
+}
+
+const GlobeView = lazy(() => import('./GlobeView').catch(() => ({ default: GlobeLoadError })))
+
+export function MapView({ globe, setGlobe, ...props }) {
+  const { political, atlas, taskNumber } = props
+  const config = atlas.list.map
+  return (
     <section className="map-card" aria-label={political ? 'Политическая карта' : 'Физическая карта'}>
-      <div className={`map-frame ${training ? 'answer-map' : ''}`}>
-        <div
-          className={`map-canvas${political ? ' political-map' : ''}`}
-          ref={element}
-          aria-label={russia ? 'Интерактивная карта России' : 'Интерактивная карта мира'}
-          aria-describedby={!training && inspected ? 'keyboard-guide map-tooltip' : 'keyboard-guide'}
-        />
-        <span id="keyboard-guide" className="sr-only">Стрелки перемещают карту. Enter выбирает точку в центре карты.</span>
-        <div className="map-tooltip-placement" aria-live="polite">
-          {!training && inspected && <ObjectTooltip object={inspected} />}
+      <div className={`map-frame ${taskNumber !== undefined ? 'answer-map' : ''}`}>
+        <div className="map-dimension" role="group" aria-label="Вид карты">
+          <button aria-pressed={!globe} onClick={() => setGlobe(false)}>2D</button>
+          <button aria-pressed={globe} onClick={() => setGlobe(true)}>3D</button>
         </div>
-        <div className="map-north" aria-hidden="true"><span>С</span><span>▲</span></div>
-        <div className="map-crosshair" aria-hidden="true"><Crosshair size={27} /></div>
-        <div className="map-controls" aria-label="Управление картой">
-          <div className="zoom-controls">
-            <button className="icon-button" aria-label="Приблизить" onClick={() => mapState.current.map.zoomIn()}><Plus size={21} /></button>
-            <button className="icon-button" aria-label="Отдалить" onClick={() => mapState.current.map.zoomOut()}><Minus size={21} /></button>
-          </div>
-          <button className="icon-button reset-map" aria-label="Показать всю карту" onClick={() => mapState.current.reset()}><Crosshair size={20} /></button>
-        </div>
+        {globe ? (
+          <Suspense fallback={<p className="globe-status" role="status">Загружаем глобус…</p>}>
+            <GlobeView {...props} />
+          </Suspense>
+        ) : <FlatMap {...props} />}
       </div>
       <div className="map-footer">
         <div className="map-legend" aria-label="Условные обозначения">
@@ -359,13 +331,14 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
               <span><i className="legend-relief" /> Равнины и горы</span>
               <span><i className="legend-river" /> Реки</span>
               <span><i className="legend-water" /> Озёра</span>
-              <span><i className="summit-symbol" /> Высшие точки</span>
+              {!globe && <span><i className="summit-symbol" /> Высшие точки</span>}
               <span><i className="legend-boundary" /> Граница</span>
             </>
           )}
         </div>
         <div className="attribution">
           {config.attributions.map(({ text, url }) => <a key={url} href={url} target="_blank" rel="noreferrer">{text}</a>)}
+          {globe && <a href="https://www.ncei.noaa.gov/products/etopo-global-relief-model" target="_blank" rel="noreferrer">NOAA ETOPO 2022</a>}
         </div>
       </div>
     </section>

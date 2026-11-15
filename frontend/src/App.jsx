@@ -24,6 +24,7 @@ export function App() {
   const [feedback, setFeedback] = useState(null)
   const [selection, setSelection] = useState(null)
   const [highlight, setHighlight] = useState(false)
+  const [globe, setGlobe] = useState(false)
   const [modal, setModal] = useState(null)
   const [exitPath, setExitPath] = useState(null)
   const [name, setName] = useState('')
@@ -337,6 +338,8 @@ export function App() {
                 {ready ? <MapView
                   atlas={atlas}
                   political={political}
+                  globe={globe}
+                  setGlobe={setGlobe}
                   taskNumber={task?.number}
                   highlight={highlight && !feedback}
                   marker={feedback ?? selection}
