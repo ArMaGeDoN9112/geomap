@@ -1,7 +1,7 @@
 import random
 from uuid import UUID, uuid4
 
-from . import storage
+from . import countries, storage
 from .grading import grade
 
 
@@ -18,10 +18,13 @@ def task(objects: list[dict], number: int) -> dict:
     return {"number": number, "total": len(objects), "prompt": obj["prompt"]}
 
 
-def start(name: str | None) -> dict:
+def start(name: str | None, *, political: bool = False) -> dict:
     run_id = uuid4()
     with storage.connect() as db:
-        objects = storage.list_objects(db)
+        objects = (
+            [countries.training_country(f"country:{code}") for code in countries.TRAINING_IDS]
+            if political else storage.list_objects(db)
+        )
         random.shuffle(objects)
         storage.delete_expired_runs(db)
         storage.insert_run(db, run_id, name, [obj["id"] for obj in objects])
@@ -39,7 +42,8 @@ def answer(run_id: UUID, number: int, longitude: float, latitude: float) -> dict
             raise TaskConflict("Сейчас нельзя ответить на это задание")
 
         object_id = run["object_ids"][number - 1]
-        geometry = storage.object_geometry(db, object_id)
+        country = countries.COUNTRIES.get(object_id)
+        geometry = country["geometry"] if country else storage.object_geometry(db, object_id)
         feedback = {
             "number": number,
             "object_id": object_id,
@@ -64,8 +68,12 @@ def advance(run_id: UUID, number: int) -> dict:
             current += 1
             storage.set_task_number(db, run_id, current)
 
-        catalog = {obj["id"]: obj for obj in storage.list_objects(db)}
-        objects = [catalog[object_id] for object_id in run["object_ids"]]
+        object_ids = run["object_ids"]
+        if object_ids[0].startswith("country:"):
+            objects = [countries.training_country(object_id) for object_id in object_ids]
+        else:
+            catalog = {obj["id"]: obj for obj in storage.list_objects(db)}
+            objects = [catalog[object_id] for object_id in object_ids]
         if current <= len(objects):
             return {"task": task(objects, current)}
 

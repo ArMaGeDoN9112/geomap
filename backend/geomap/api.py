@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy.exc import OperationalError
 from starlette.concurrency import run_in_threadpool
 
-from . import storage, training
+from . import countries, storage, training
 
 
 @asynccontextmanager
@@ -110,12 +110,15 @@ class Attribution(BaseModel):
     url: str
 
 
-class PhysicalMap(BaseModel):
+class MapConfig(BaseModel):
     bounds: tuple[float, float, float, float]
+    attributions: list[Attribution]
+
+
+class PhysicalMap(MapConfig):
     hillshade_tiles: str
     hillshade_max_zoom: int
     reference_lines: str
-    attributions: list[Attribution]
 
 
 class ObjectList(BaseModel):
@@ -123,6 +126,22 @@ class ObjectList(BaseModel):
     title: str
     map: PhysicalMap
     objects: list[GeographicObject]
+
+
+class Country(BaseModel):
+    id: str
+    name: str
+    capitals: list[str]
+    color: int
+    geometry: dict
+
+
+class CountryList(BaseModel):
+    id: Literal["world"]
+    title: str
+    map: MapConfig
+    objects: list[Country]
+    training_count: int
 
 
 @app.exception_handler(training.RunNotFound)
@@ -202,6 +221,27 @@ def object_list():
 @app.post("/api/lists/russia/training", response_model=StartedTraining, status_code=201)
 def start_training(body: StartTraining | None = None):
     return training.start((body.name or None) if body else None)
+
+
+@app.get("/api/lists/world", response_model=CountryList)
+def country_list():
+    return {
+        "id": "world",
+        "title": "Страны мира",
+        "map": {
+            "bounds": [-180, -58, 180, 83.65],
+            "attributions": [
+                {"text": "Made with Natural Earth", "url": "https://www.naturalearthdata.com/"},
+            ],
+        },
+        "objects": list(countries.COUNTRIES.values()),
+        "training_count": len(countries.TRAINING_IDS),
+    }
+
+
+@app.post("/api/lists/world/training", response_model=StartedTraining, status_code=201)
+def start_country_training(body: StartTraining | None = None):
+    return training.start((body.name or None) if body else None, political=True)
 
 
 @app.post("/api/training/{run_id}/tasks/{number}/answer", response_model=Feedback)

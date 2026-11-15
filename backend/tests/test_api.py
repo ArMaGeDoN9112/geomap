@@ -8,7 +8,7 @@ from shapely.geometry import shape
 from sqlalchemy import create_engine
 from sqlalchemy.schema import CreateSchema, DropSchema
 
-from geomap import storage, training
+from geomap import countries, storage, training
 from geomap.api import app
 
 
@@ -58,6 +58,56 @@ def test_catalog_provides_water_areas_and_reference_layers(client, catalog):
     assert {f["properties"]["kind"] for f in response.json()["features"]} == {
         "coastline",
         "boundary",
+    }
+
+
+def test_world_catalog_serves_country_borders_and_capitals_without_database():
+    response = TestClient(app).get("/api/lists/world")
+    assert response.status_code == 200
+    catalog = response.json()
+    assert catalog["id"] == "world"
+    assert catalog["training_count"] == 12
+    objects = {obj["id"]: obj for obj in catalog["objects"]}
+    assert len(objects) > 190
+    assert objects["country:rus"]["capitals"] == ["Москва"]
+    assert all(shape(obj["geometry"]).is_valid for obj in objects.values())
+
+
+def test_world_training_grades_country_areas_and_returns_only_countries(client, monkeypatch):
+    monkeypatch.setattr(
+        training.random, "shuffle",
+        lambda objects: objects.sort(key=lambda obj: obj["id"] != "country:rus"),
+    )
+    started = client.post("/api/lists/world/training", json={"name": "Анна"})
+    assert started.status_code == 201
+    run = started.json()
+    assert run["task"] == {"number": 1, "total": 12, "prompt": "Покажи на карте «Россия»"}
+    path = f"/api/training/{run['id']}"
+
+    answered = []
+    for number in range(1, 13):
+        answer_url = f"{path}/tasks/{number}/answer"
+        coordinates = point(-171.7, 65.8) if number == 1 else point(-26, 0)
+        response = client.post(answer_url, json=coordinates)
+        assert response.status_code == 200
+        feedback = response.json()
+        answered.append(feedback["object_id"])
+        assert feedback["correct"] is (number == 1)
+        if number == 1:
+            assert client.post(answer_url, json=point(-26, 0)).json() == feedback
+            assert feedback["distance_km"] is None
+        else:
+            assert feedback["distance_km"] > 100
+        following = client.post(f"{path}/tasks/{number}/next")
+        assert following.status_code == 200
+
+    assert set(answered) == {f"country:{code}" for code in countries.TRAINING_IDS}
+    assert following.json()["result"] == {
+        "name": "Анна", "correct": 1, "total": 12,
+        "missed": [
+            {"id": object_id, "name": countries.COUNTRIES[object_id]["name"]}
+            for object_id in answered[1:]
+        ],
     }
 
 
