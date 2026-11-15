@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: geomap
+      POSTGRES_USER: geomap
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-geomap-dev}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U geomap -d geomap"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ./backend
+    environment:
+      PGHOST: db
+      PGDATABASE: geomap
+      PGUSER: geomap
+      PGPASSWORD: ${POSTGRES_PASSWORD:-geomap-dev}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/api/health', timeout=3).close()"]
+      interval: 5s
+      timeout: 4s
+      retries: 10
+
+volumes:
+  pgdata:
