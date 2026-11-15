@@ -341,18 +341,6 @@ h1 {
   pointer-events: none;
 }
 .map-north span + span { font-size: 16px; }
-.map-crosshair {
-  display: none;
-  position: absolute;
-  z-index: 700;
-  left: 50%;
-  top: 50%;
-  translate: -50% -50%;
-  color: var(--green);
-  filter: drop-shadow(0 0 2px white);
-  pointer-events: none;
-}
-.map-canvas:focus-visible ~ .map-crosshair { display: flex; }
 /* Both footers share a row so wrapping attribution cannot resize the map. */
 .map-footers { display: grid; }
 .map-footers > .map-footer { grid-area: 1 / 1; }

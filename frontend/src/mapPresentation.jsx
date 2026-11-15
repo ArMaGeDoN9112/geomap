@@ -73,10 +73,5 @@ export function MapControls({ zoomIn, zoomOut, reset, target }) {
       <button className="icon-button reset-map" aria-label="Показать всю карту" onClick={reset}><Crosshair size={20} /></button>
     </div>
   )
-  return (
-    <>
-      <div className="map-crosshair" aria-hidden="true"><Crosshair size={27} /></div>
-      {target ? createPortal(buttons, target) : buttons}
-    </>
-  )
+  return target ? createPortal(buttons, target) : buttons
 }
