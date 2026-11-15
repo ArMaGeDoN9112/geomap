@@ -6,11 +6,19 @@ test('switches to the globe, rotates it and answers with coordinates', async ({ 
   const globe = page.getByLabel('Интерактивный глобус')
   const twoD = page.getByRole('button', { name: '2D', exact: true })
   const threeD = page.getByRole('button', { name: '3D', exact: true })
+  const panel = page.getByRole('complementary', { name: 'Изучение' })
   await expect(twoD).toHaveAttribute('aria-pressed', 'true')
   await expect(flat.locator('path[data-object-id="country:bra"]')).toBeAttached()
+  const flatArea = await flat.boundingBox()
   await threeD.click()
   await expect(globe.locator('canvas')).toBeVisible({ timeout: 15_000 })
+  await expect(panel.getByRole('group', { name: 'Управление картой' })).toBeVisible()
   const { x, y, width, height } = await globe.boundingBox()
+  const panelArea = await panel.boundingBox()
+  expect(height).toBeGreaterThan(flatArea.height)
+  expect(height).toBeGreaterThan(page.viewportSize().height * 0.75)
+  expect(panelArea.x).toBeGreaterThanOrEqual(x + width)
+  await expect(panel.getByRole('button', { name: '3D', exact: true })).toBeFocused()
   const center = { x: x + width / 2, y: y + height / 2 }
   const captureGlobe = () => page.screenshot({
     clip: { x: Math.round(center.x - 175), y: Math.round(center.y - 175), width: 350, height: 350 },
@@ -51,6 +59,7 @@ test.describe('globe on a touch screen', () => {
     await page.getByRole('button', { name: '3D', exact: true }).tap()
     const globe = page.getByRole('region', { name: 'Интерактивный глобус' })
     await expect(globe.locator('canvas')).toBeVisible({ timeout: 15_000 })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(page.viewportSize().width)
     await globe.tap()
     await expect(page.getByRole('tooltip')).toContainText('Бразилия')
     await page.getByRole('button', { name: 'Начать тренировку', exact: true }).tap()

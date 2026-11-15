@@ -308,19 +308,15 @@ function GlobeLoadError() {
 
 const GlobeView = lazy(() => import('./GlobeView').catch(() => ({ default: GlobeLoadError })))
 
-export function MapView({ globe, setGlobe, ...props }) {
+export function MapView({ globe, globeControls, ...props }) {
   const { political, atlas, taskNumber } = props
   const config = atlas.list.map
   return (
     <section className="map-card" aria-label={political ? 'Политическая карта' : 'Физическая карта'}>
       <div className={`map-frame ${taskNumber !== undefined ? 'answer-map' : ''}`}>
-        <div className="map-dimension" role="group" aria-label="Вид карты">
-          <button aria-pressed={!globe} onClick={() => setGlobe(false)}>2D</button>
-          <button aria-pressed={globe} onClick={() => setGlobe(true)}>3D</button>
-        </div>
         {globe ? (
           <Suspense fallback={<p className="globe-status" role="status">Загружаем глобус…</p>}>
-            <GlobeView {...props} />
+            <GlobeView {...props} controlsTarget={globeControls} />
           </Suspense>
         ) : <FlatMap {...props} />}
       </div>

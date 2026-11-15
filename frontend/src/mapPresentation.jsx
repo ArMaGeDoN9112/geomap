@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { Crosshair, Minus, Plus } from 'lucide-react'
 
 export const countryColors = [
@@ -60,17 +61,20 @@ export function MapInspection({ object }) {
   )
 }
 
-export function MapControls({ zoomIn, zoomOut, reset }) {
+export function MapControls({ zoomIn, zoomOut, reset, target }) {
+  const buttons = (
+    <div className="map-controls" role="group" aria-label="Управление картой">
+      <div className="zoom-controls">
+        <button className="icon-button" aria-label="Приблизить" onClick={zoomIn}><Plus size={21} /></button>
+        <button className="icon-button" aria-label="Отдалить" onClick={zoomOut}><Minus size={21} /></button>
+      </div>
+      <button className="icon-button reset-map" aria-label="Показать всю карту" onClick={reset}><Crosshair size={20} /></button>
+    </div>
+  )
   return (
     <>
       <div className="map-crosshair" aria-hidden="true"><Crosshair size={27} /></div>
-      <div className="map-controls" aria-label="Управление картой">
-        <div className="zoom-controls">
-          <button className="icon-button" aria-label="Приблизить" onClick={zoomIn}><Plus size={21} /></button>
-          <button className="icon-button" aria-label="Отдалить" onClick={zoomOut}><Minus size={21} /></button>
-        </div>
-        <button className="icon-button reset-map" aria-label="Показать всю карту" onClick={reset}><Crosshair size={20} /></button>
-      </div>
+      {target ? createPortal(buttons, target) : buttons}
     </>
   )
 }

@@ -6,7 +6,7 @@ const arrows = {
   ArrowLeft: [0.13, 0], ArrowRight: [-0.13, 0], ArrowUp: [0, 0.13], ArrowDown: [0, -0.13],
 }
 
-export default function GlobeView({ atlas, political, taskNumber, highlight, marker, feedback, onSelect }) {
+export default function GlobeView({ atlas, political, taskNumber, highlight, marker, feedback, onSelect, controlsTarget }) {
   const element = useRef(null)
   const pin = useRef(null)
   const globe = useRef(null)
@@ -151,7 +151,7 @@ export default function GlobeView({ atlas, political, taskNumber, highlight, mar
       {status === 'ready' && (
         <>
           <MapInspection object={!training && hovered} />
-          <MapControls zoomIn={control('zoomIn')} zoomOut={control('zoomOut')} reset={control('reset')} />
+          <MapControls zoomIn={control('zoomIn')} zoomOut={control('zoomOut')} reset={control('reset')} target={controlsTarget} />
         </>
       )}
     </>

@@ -25,6 +25,7 @@ export function App() {
   const [selection, setSelection] = useState(null)
   const [highlight, setHighlight] = useState(false)
   const [globe, setGlobe] = useState(false)
+  const [globeControls, setGlobeControls] = useState(null)
   const [modal, setModal] = useState(null)
   const [exitPath, setExitPath] = useState(null)
   const [name, setName] = useState('')
@@ -224,7 +225,7 @@ export function App() {
         </div>
       </header>
 
-      <main>
+      <main className={globe && !result ? 'atlas-globe' : undefined}>
         <nav className="map-switcher" aria-label="Выбор карты">
           <a href="/russia" aria-current={!political ? 'page' : undefined} onClick={switchMap}>
             <Mountain size={16} aria-hidden="true" /> Физическая
@@ -260,6 +261,13 @@ export function App() {
             {atlas ? (
               <div className="workspace">
                 <aside className="activity" aria-label={training ? 'Тренировка' : 'Изучение'}>
+                  <div className="activity-map-tools">
+                    <div className="map-dimension" role="group" aria-label="Вид карты">
+                      <button aria-pressed={!globe} onClick={() => setGlobe(false)}>2D</button>
+                      <button aria-pressed={globe} onClick={() => setGlobe(true)}>3D</button>
+                    </div>
+                    {globe && <div ref={setGlobeControls} />}
+                  </div>
                   {training ? (
                     <>
                       <div className="task-status">
@@ -339,7 +347,7 @@ export function App() {
                   atlas={atlas}
                   political={political}
                   globe={globe}
-                  setGlobe={setGlobe}
+                  globeControls={globeControls}
                   taskNumber={task?.number}
                   highlight={highlight && !feedback}
                   marker={feedback ?? selection}
