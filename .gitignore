@@ -3,3 +3,7 @@
 .uv-cache/
 .venv/
 __pycache__/
+node_modules/
+/frontend/.npm-cache/
+/frontend/dist/
+/frontend/test-results/

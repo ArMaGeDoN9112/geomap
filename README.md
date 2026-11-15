@@ -1,6 +1,6 @@
 # GeoMap
 
-Сервер GeoMap отдаёт готовый список «Водоёмы России» с контурами 11 объектов и ведёт прохождение тренировки без регистрации. Правила зачёта описаны в [спецификации](docs/product-spec.md).
+GeoMap помогает изучать 11 водоёмов на физической карте России и тренироваться показывать их по памяти. Ссылка на готовый список открывает «Изучение». Правила зачёта описаны в [спецификации](docs/product-spec.md).
 
 ## Локальный запуск
 
@@ -11,6 +11,19 @@ docker compose up --build -d --wait
 ```
 
 Документация API доступна на [localhost:8000/docs](http://localhost:8000/docs), проверка базы и API — на [localhost:8000/api/health](http://localhost:8000/api/health).
+
+Установите Node.js 22.12+ и npm. В каталоге `frontend/` выполните:
+
+```sh
+npm ci
+npm run dev
+```
+
+Откройте [localhost:5173/russia](http://localhost:5173/russia). Vite проксирует `/api` на локальный FastAPI. При изменении `API_PORT` в корневом `.env` перезапустите Vite.
+
+Для сборки в том же каталоге выполните `npm run build`. Сервер статики должен отдавать файлы из `frontend/dist/`, обслуживать `/russia` через `index.html` и направлять запросы к `/api` в FastAPI.
+
+Карта использует Leaflet. Заливка суши построена из [Natural Earth 5.1.2, Land 1:50m](https://github.com/nvkelso/natural-earth-vector/blob/v5.1.2/geojson/ne_50m_land.geojson). Контур обрезан по охвату карты и упрощён до 0,014°. Для отрисовки рельефа браузеру нужен доступ к Esri World Hillshade.
 
 API при старте создаёт таблицы через SQLAlchemy Core и загружает список объектов из локальной выгрузки. PostgreSQL доступен контейнерам Compose и хранит данные в томе `pgdata`. Команда `docker compose down` останавливает сервисы и сохраняет том.
 
@@ -37,7 +50,14 @@ API при старте создаёт таблицы через SQLAlchemy Core
 
 ## Проверки
 
-С запущенными сервисами выполните в корне проекта:
+Для браузерных проверок поднимите API и PostgreSQL через Compose. Затем из `frontend/` выполните:
+
+```sh
+npx playwright install chromium
+npm test
+```
+
+Для HTTP-тестов с запущенными сервисами выполните в корне проекта:
 
 ```sh
 docker compose run --rm --no-deps --user 0 --volume "./backend:/checks:ro" api sh -c 'pip install --no-cache-dir -q -r /checks/requirements-test.txt && GEOMAP_TEST_DB=1 python -m pytest -p no:cacheprovider /checks/tests'
