@@ -22,6 +22,7 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
   const hovered = useRef(null)
   const [tilesMissing, setTilesMissing] = useState(false)
   const { map: config, objects } = atlas.list
+  const russia = atlas.category === 'russia'
   const training = taskNumber !== undefined
 
   const inspect = useEffectEvent((hit, position) => {
@@ -56,8 +57,8 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
 
   const choosePoint = useEffectEvent((hit, position, confirm) => {
     if (training) {
-      if (political && (position.lng < -180 || position.lng > 180)) return
-      const { lat, lng } = political ? position : position.wrap()
+      if (!russia && (position.lng < -180 || position.lng > 180)) return
+      const { lat, lng } = russia ? position.wrap() : position
       onSelect({ latitude: lat, longitude: lng, displayLongitude: position.lng, objectId: hit, needsConfirmation: confirm })
     } else {
       inspect(hit, position)
@@ -73,9 +74,9 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
       attributionControl: false,
       doubleClickZoom: false,
       zoomSnap: 0.25,
-      minZoom: political ? 0 : 1,
+      minZoom: russia ? 1 : 0,
       maxZoom: 18,
-      maxBounds: political ? [[-85.05, -180], [85.05, 180]] : [[15, -72], [85.05, 245]],
+      maxBounds: russia ? [[15, -72], [85.05, 245]] : [[-85.05, -180], [85.05, 180]],
       maxBoundsViscosity: 1,
       zoomAnimation: false,
       fadeAnimation: false,
@@ -83,27 +84,32 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
     const reset = () => map.fitBounds(bounds, { padding: [political ? 10 : 22, 22], animate: false })
     reset()
 
-    if (!political) {
+    if (atlas.land) {
       map.createPane('land').style.zIndex = 190
-      L.rectangle([[-90, -540], [90, 540]], {
-        pane: 'land', interactive: false, stroke: false, fillColor: '#cadee2', fillOpacity: 1,
-      }).addTo(map)
       L.geoJSON(atlas.land, {
-        pane: 'land', interactive: false, stroke: false, fillColor: '#e5e7cb', fillOpacity: 1,
+        pane: 'land', interactive: false, stroke: !russia, color: '#789a96', weight: 0.75,
+        fillColor: '#e5e7cb', fillOpacity: 1,
       }).addTo(map)
+    }
+    if (!political) {
       L.tileLayer(config.hillshade_tiles, { maxNativeZoom: config.hillshade_max_zoom })
         .on('loading', () => setTilesMissing(false))
         .on('tileerror', () => setTilesMissing(true))
         .addTo(map)
-
+    }
+    if (atlas.lines) {
       const lineStyle = ({ properties }) => properties.kind === 'boundary'
         ? { color: '#657c62', weight: 1.05, opacity: 0.62, dashArray: '4 4' }
         : { color: '#789a96', weight: 1, opacity: 0.75 }
       L.geoJSON(atlas.lines, { style: lineStyle, interactive: false }).addTo(map)
-      L.geoJSON(atlas.lines, {
-        style: lineStyle, interactive: false,
-        coordsToLatLng: ([longitude, latitude]) => L.latLng(latitude, longitude + 360),
-      }).addTo(map)
+      if (russia) {
+        L.geoJSON(atlas.lines, {
+          style: lineStyle, interactive: false,
+          coordsToLatLng: ([longitude, latitude]) => L.latLng(latitude, longitude + 360),
+        }).addTo(map)
+      }
+    }
+    if (russia) {
       L.layerGroup([
         ...[30, 60, 90, 120, 150, 180, 210].map((longitude) => L.polyline([[15, longitude], [85, longitude]])),
         ...[30, 45, 60, 75].map((latitude) => L.polyline([[latitude, -72], [latitude, 245]])),
@@ -147,7 +153,7 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
     }
     const touchEnd = (event) => {
       touches = event.touches.length
-      if (political && event.type === 'touchend' && !multiTouch) {
+      if (!russia && event.type === 'touchend' && !multiTouch) {
         lastTouch = event.changedTouches[0]
       }
     }
@@ -208,7 +214,7 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
       map.remove()
       mapState.current = null
     }
-  }, [atlas, config, objects, political])
+  }, [atlas, config, objects, political, russia])
 
   useEffect(() => {
     mapState.current.tooltip.remove()
@@ -221,9 +227,9 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
     const { map, pin, outline } = mapState.current
     if (marker) {
       const longitude = marker.displayLongitude ?? marker.longitude
-      const nearbyLongitude = political
-        ? longitude
-        : longitude + 360 * Math.round((map.getCenter().lng - longitude) / 360)
+      const nearbyLongitude = russia
+        ? longitude + 360 * Math.round((map.getCenter().lng - longitude) / 360)
+        : longitude
       pin.setLatLng([marker.latitude, nearbyLongitude])
         .setStyle({ fillColor: feedback && !feedback.correct ? '#af4a23' : '#17463c' })
         .addTo(map)
@@ -238,7 +244,7 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
         map.fitBounds(target, { padding: [70, 70], maxZoom: 12, animate: false })
       }
     }
-  }, [marker, highlight, feedback, political])
+  }, [marker, highlight, feedback, russia])
 
   return (
     <section className="map-card" aria-label={political ? 'Политическая карта' : 'Физическая карта'}>
@@ -246,7 +252,7 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
         <div
           className={`map-canvas${political ? ' political-map' : ''}`}
           ref={element}
-          aria-label={political ? 'Интерактивная карта мира' : 'Интерактивная карта России'}
+          aria-label={russia ? 'Интерактивная карта России' : 'Интерактивная карта мира'}
           aria-describedby="keyboard-guide"
         />
         <span id="keyboard-guide" className="sr-only">Стрелки перемещают карту. Enter выбирает точку в центре карты.</span>

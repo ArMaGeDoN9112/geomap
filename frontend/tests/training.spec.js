@@ -142,7 +142,7 @@ test('political map shows capitals, grades clicks and asks before switching maps
   await page.getByRole('link', { name: 'Политическая', exact: true }).click()
   await expect(page).toHaveURL(/\/world$/)
   await expect(page.getByRole('heading', { name: 'Страны мира' })).toBeVisible()
-  await expect(page.getByText('Стран в тренировке')).toContainText('12')
+  await expect(page.getByLabel('Категория')).toHaveValue('world')
   const brazil = await areaPoint(page, 'country:bra', 4)
   expect(brazil).not.toBeNull()
   await page.mouse.move(brazil.x, brazil.y)
@@ -155,7 +155,8 @@ test('political map shows capitals, grades clicks and asks before switching maps
   expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/\/world$/)
 
   await start(page)
-  const algeria = await areaPoint(page, 'country:dza', 4)
+  const prompt = await page.getByRole('heading', { name: /^Покажи/ }).textContent()
+  const algeria = await areaPoint(page, prompt.includes('Алжир') ? 'country:bra' : 'country:dza', 4)
   expect(algeria).not.toBeNull()
   await page.mouse.move(algeria.x, algeria.y)
   await expect(tooltip).toHaveCount(0)
@@ -177,6 +178,28 @@ test('political map shows capitals, grades clicks and asks before switching maps
   await expect(page.getByRole('heading', { name: 'Изучение' })).toBeVisible()
 })
 
+for (const [route, category, shown, hidden] of [
+  ['/russia', 'africa', 'water', 'baikal'],
+  ['/world', 'south-america', 'country:bra', 'country:chn'],
+]) {
+  test(`selects a category and exercise count on ${route}`, async ({ page }) => {
+    await page.goto(route)
+    const select = page.getByLabel('Категория')
+    await expect(select.locator('option[value="antarctica"]')).toHaveText('Антарктида')
+    await select.selectOption(category)
+    await expect(page).toHaveURL(new RegExp(`category=${category}$`))
+    const start = page.getByRole('button', { name: 'Начать тренировку', exact: true })
+    await expect(start).toBeEnabled()
+    await expect(mapCanvas(page).locator(`[data-object-id^="${shown}"]`).first()).toBeAttached()
+    await expect(mapCanvas(page).locator(`[data-object-id="${hidden}"]`)).toHaveCount(0)
+    await start.click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByLabel('Количество заданий').fill('3')
+    await dialog.getByRole('button', { name: 'Начать', exact: true }).click()
+    await expect(page.getByText('Задание 1 из 3', { exact: true })).toBeVisible()
+  })
+}
+
 test.describe('touch screen', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 375, height: 812 }, deviceScaleFactor: 2 })
 
@@ -194,7 +217,8 @@ test.describe('touch screen', () => {
     const confirm = page.getByRole('button', { name: 'Подтвердить' })
     await expect(confirm).toBeDisabled()
     await map.scrollIntoViewIfNeeded()
-    const algeria = await areaPoint(page, 'country:dza', 3)
+    const prompt = await page.getByRole('heading', { name: /^Покажи/ }).textContent()
+    const algeria = await areaPoint(page, prompt.includes('Алжир') ? 'country:bra' : 'country:dza', 3)
     expect(algeria).not.toBeNull()
     let submissions = 0
     page.on('request', (request) => { if (request.url().endsWith('/answer')) submissions++ })

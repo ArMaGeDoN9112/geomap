@@ -111,6 +111,49 @@ def test_world_training_grades_country_areas_and_returns_only_countries(client, 
     }
 
 
+@pytest.mark.parametrize(
+    ("map_id", "category", "count"),
+    [
+        ("russia", "antarctica", 3), ("world", "antarctica", 1),
+        ("world", "world", 20), ("world", "eurasia", 3),
+    ],
+)
+def test_category_and_count_limit_training_to_distinct_catalog_objects(client, map_id, category, count):
+    route = f"/api/lists/{map_id}"
+    catalog = client.get(route, params={"category": category}).json()
+    assert {option["id"] for option in catalog["categories"]} >= {
+        "world", "eurasia", "europe", "asia", "africa", "north-america", "south-america",
+        "oceania", "antarctica",
+    }
+    objects = {obj["id"]: obj for obj in catalog["objects"]}
+    assert catalog["available_count"] == len(objects)
+    if category == "eurasia":
+        europe = set(countries.COUNTRIES_BY_CONTINENT["europe"])
+        asia = set(countries.COUNTRIES_BY_CONTINENT["asia"])
+        assert objects.keys() == europe | asia
+    assert client.post(
+        f"{route}/training", json={"category": category, "count": len(objects) + 1},
+    ).status_code == 422
+
+    started = client.post(f"{route}/training", json={"category": category, "count": count})
+    assert started.status_code == 201
+    run = started.json()
+    assert run["task"]["total"] == count
+    path = f"/api/training/{run['id']}"
+    ids = set()
+    task = run["task"]
+    for number in range(1, count + 1):
+        obj = next(obj for obj in objects.values() if f'«{obj["name"]}»' in task["prompt"])
+        inside = shape(obj["geometry"]).representative_point()
+        feedback = client.post(f"{path}/tasks/{number}/answer", json=point(inside.x, inside.y)).json()
+        assert feedback["correct"] is True
+        assert feedback["object_id"] == obj["id"] and obj["id"] not in ids
+        ids.add(obj["id"])
+        following = client.post(f"{path}/tasks/{number}/next").json()
+        task = following.get("task")
+    assert following["result"]["total"] == following["result"]["correct"] == count
+
+
 def test_full_training_scores_only_first_answers_and_waits_for_next(client, catalog):
     started = client.post("/api/lists/russia/training", json={"name": " Анна "})
     assert started.status_code == 201
@@ -241,3 +284,6 @@ def test_invalid_request_is_rejected_before_accessing_database():
     )
     assert response.status_code == 422
     assert client.post("/api/lists/russia/training", json={"name": "\0"}).status_code == 422
+    assert client.post("/api/lists/russia/training", json={"count": 0}).status_code == 422
+    assert client.post("/api/lists/world/training", json={"count": 1.5}).status_code == 422
+    assert client.post("/api/lists/world/training", json={"category": "russia"}).status_code == 422

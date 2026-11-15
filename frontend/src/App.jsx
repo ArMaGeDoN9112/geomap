@@ -9,11 +9,13 @@ import { request } from './api'
 const political = /^\/world\/?$/.test(window.location.pathname)
 const listPath = political ? '/world' : '/russia'
 const listEndpoint = `/api/lists${listPath}`
-const mapTitle = political ? 'Политическая карта мира' : 'Физическая карта России'
+const defaultCategory = political ? 'world' : 'russia'
 const listTitle = political ? 'Страны мира' : 'Водоёмы России'
 const ObjectIcon = political ? Globe2 : Waves
 
 export function App() {
+  const [category, setCategory] = useState(() => new URLSearchParams(window.location.search).get('category') || defaultCategory)
+  const [count, setCount] = useState(null)
   const [atlas, setAtlas] = useState(null)
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [loadFailed, setLoadFailed] = useState(false)
@@ -33,28 +35,28 @@ export function App() {
   const heading = useRef(null)
   const training = run !== null
   const task = run?.task
-  const shareUrl = new URL(listPath, window.location.origin).href
+  const ready = atlas?.category === category
+  const shareUrl = new URL(listPath, window.location.origin)
+  if (category !== defaultCategory) shareUrl.searchParams.set('category', category)
 
   useEffect(() => {
-    document.title = `GeoMap — ${listTitle}`
     const controller = new AbortController()
-    request(listEndpoint, { signal: controller.signal })
+    const options = { signal: controller.signal }
+    request(`${listEndpoint}?category=${encodeURIComponent(category)}`, options)
       .then(async (list) => {
-        if (political) {
-          setAtlas({ list })
-          return
-        }
         const [lines, land] = await Promise.all([
-          request(list.map.reference_lines, { signal: controller.signal }),
-          request('/natural-earth-land.geojson', { signal: controller.signal }),
+          list.map.reference_lines && request(list.map.reference_lines, options),
+          list.map.land && request(list.map.land, options),
         ])
-        setAtlas({ list, lines, land })
+        if (controller.signal.aborted) return
+        document.title = `GeoMap — ${list.title}`
+        setAtlas({ category, list, lines, land })
       })
       .catch(() => {
         if (!controller.signal.aborted) setLoadFailed(true)
       })
     return () => controller.abort()
-  }, [loadAttempt])
+  }, [category, loadAttempt])
 
   useEffect(() => {
     if (!training) return
@@ -101,13 +103,23 @@ export function App() {
       leaving.current = false
       setRun(await request(`${listEndpoint}/training`, {
         method: 'POST',
-        body: { name: name.trim() || null },
+        body: { name: name.trim() || null, category, count: Number(count ?? atlas.list.training_count) },
       }))
       setResult(null)
       setHighlight(false)
       clearAnswer()
       setModal(null)
     })
+  }
+
+  function changeCategory(event) {
+    const next = event.target.value
+    setCategory(next)
+    setCount(null)
+    setLoadFailed(false)
+    const url = new URL(listPath, window.location.origin)
+    if (next !== defaultCategory) url.searchParams.set('category', next)
+    window.history.replaceState(null, '', url)
   }
 
   function submit(point) {
@@ -172,7 +184,7 @@ export function App() {
 
   async function share() {
     try {
-      await navigator.clipboard.writeText(shareUrl)
+      await navigator.clipboard.writeText(shareUrl.href)
       setCopied(true)
     } catch {
       openModal('share')
@@ -191,7 +203,7 @@ export function App() {
             <button aria-current={!training && !result ? 'page' : undefined} onClick={returnToStudy} disabled={pending}>
               <BookOpen size={17} /> Изучение
             </button>
-            <button aria-current={training || result ? 'page' : undefined} onClick={() => openModal('start')} disabled={!atlas || training || pending}>
+            <button aria-current={training || result ? 'page' : undefined} onClick={() => openModal('start')} disabled={!ready || training || pending}>
               <Target size={17} /> Тренировка
             </button>
           </nav>
@@ -233,8 +245,8 @@ export function App() {
         ) : (
           <>
             <div className="page-intro">
-              <div className="eyebrow"><Compass size={16} /> {mapTitle}</div>
-              <h1>{atlas?.list.title ?? listTitle}</h1>
+              <div className="eyebrow"><Compass size={16} /> {political ? 'Политическая карта' : 'Физическая карта'}</div>
+              <h1>{ready ? atlas.list.title : listTitle}</h1>
             </div>
             {atlas ? (
               <div className="workspace">
@@ -286,6 +298,10 @@ export function App() {
                     <>
                       <div className="panel-icon"><BookOpen size={24} /></div>
                       <h2>Изучение</h2>
+                      <label className="input-label" htmlFor="category">Категория</label>
+                      <select id="category" className="field" value={category} onChange={changeCategory}>
+                        {atlas.list.categories.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
+                      </select>
                       {political ? (
                         <>
                           <p className="desktop-hint">Наведи указатель на страну, чтобы узнать её название и столицу.</p>
@@ -304,15 +320,15 @@ export function App() {
                         <p>Приближай и перемещай карту, чтобы рассмотреть {political ? 'небольшие страны' : 'небольшие водоёмы'}.</p>
                       </div>
                       <div className="activity-actions">
-                        <div className="object-count"><ObjectIcon size={17} /> {political ? 'Стран в тренировке' : 'Объектов в списке'} <strong>{atlas.list.training_count ?? atlas.list.objects.length}</strong></div>
-                        <button className="primary" onClick={() => openModal('start')}>
+                        {ready && <div className="object-count"><ObjectIcon size={17} /> Объектов в списке <strong>{atlas.list.available_count}</strong></div>}
+                        <button className="primary" onClick={() => openModal('start')} disabled={!ready}>
                           Начать тренировку <ArrowRight size={18} />
                         </button>
                       </div>
                     </>
                   )}
                 </aside>
-                <MapView
+                {ready ? <MapView
                   atlas={atlas}
                   political={political}
                   taskNumber={task?.number}
@@ -324,19 +340,10 @@ export function App() {
                     if (point.needsConfirmation) setSelection(point)
                     else submit(point)
                   }}
-                />
+                /> : <MapLoading failed={loadFailed} political={political} retry={() => { setLoadFailed(false); setLoadAttempt(loadAttempt + 1) }} />}
               </div>
             ) : (
-              <section className="loading" aria-live="polite">
-                {loadFailed ? (
-                  <>
-                    <p>Не удалось загрузить {political ? 'политическую' : 'физическую'} карту.</p>
-                    <button className="secondary" onClick={() => { setLoadFailed(false); setLoadAttempt(loadAttempt + 1) }}>
-                      <RotateCcw size={17} /> Повторить
-                    </button>
-                  </>
-                ) : <p>Загружаем карту…</p>}
-              </section>
+              <MapLoading failed={loadFailed} political={political} retry={() => { setLoadFailed(false); setLoadAttempt(loadAttempt + 1) }} />
             )}
           </>
         )}
@@ -346,7 +353,11 @@ export function App() {
         <Dialog title={modal === 'start' ? 'Начать тренировку' : modal === 'exit' ? 'Выйти из тренировки?' : 'Ссылка на список'} onClose={() => setModal(null)} pending={pending}>
           {modal === 'start' && (
             <form onSubmit={begin}>
-              <p>{political ? `Найди на карте ${atlas.list.training_count} стран в случайном порядке.` : 'На каждый объект из списка будет одно задание в случайном порядке.'}</p>
+              <label className="input-label" htmlFor="count">Количество заданий</label>
+              <input id="count" className="field" type="number" min="1" max={atlas.list.available_count}
+                required value={count ?? atlas.list.training_count} onChange={(event) => setCount(event.target.value)}
+                aria-describedby="count-limit" />
+              <p id="count-limit">Доступно от 1 до {atlas.list.available_count}.</p>
               <label className="input-label" htmlFor="student">Имя <span>по желанию</span></label>
               <input id="student" className="field" autoComplete="off" maxLength={100} value={name} onChange={(event) => setName(event.target.value)} placeholder="Например, Анна" />
               {error && <p className="error" role="alert">{error}</p>}
@@ -366,11 +377,24 @@ export function App() {
             </>
           )}
           {modal === 'share' && (
-            <input className="field" aria-label="Ссылка на список" readOnly value={shareUrl} onFocus={(event) => event.target.select()} />
+            <input className="field" aria-label="Ссылка на список" readOnly value={shareUrl.href} onFocus={(event) => event.target.select()} />
           )}
         </Dialog>
       )}
     </>
+  )
+}
+
+function MapLoading({ failed, political, retry }) {
+  return (
+    <section className="loading" aria-live="polite">
+      {failed ? (
+        <>
+          <p>Не удалось загрузить {political ? 'политическую' : 'физическую'} карту.</p>
+          <button className="secondary" onClick={retry}><RotateCcw size={17} /> Повторить</button>
+        </>
+      ) : <p>Загружаем карту…</p>}
+    </section>
   )
 }
 

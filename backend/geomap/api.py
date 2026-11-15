@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy.exc import OperationalError
 from starlette.concurrency import run_in_threadpool
 
-from . import countries, storage, training
+from . import countries, regions, storage, training
 
 
 @asynccontextmanager
@@ -57,6 +57,15 @@ class StartTraining(BaseModel):
             pattern=r"^[^\x00-\x1f\x7f]*$",
         ),
     ] | None = None
+    count: Annotated[int, Field(strict=True, ge=1)] | None = None
+
+
+class StartPhysicalTraining(StartTraining):
+    category: regions.PhysicalCategory | None = None
+
+
+class StartCountryTraining(StartTraining):
+    category: regions.WorldCategory | None = None
 
 
 class Task(BaseModel):
@@ -113,17 +122,29 @@ class Attribution(BaseModel):
 class MapConfig(BaseModel):
     bounds: tuple[float, float, float, float]
     attributions: list[Attribution]
+    land: str | None = None
+    reference_lines: str | None = None
 
 
 class PhysicalMap(MapConfig):
     hillshade_tiles: str
     hillshade_max_zoom: int
-    reference_lines: str
 
 
-class ObjectList(BaseModel):
-    id: Literal["russia"]
+class CategoryOption(BaseModel):
+    id: regions.PhysicalCategory
+    label: str
+
+
+class Catalog(BaseModel):
     title: str
+    categories: list[CategoryOption]
+    training_count: int
+    available_count: int
+
+
+class ObjectList(Catalog):
+    id: Literal["russia"]
     map: PhysicalMap
     objects: list[GeographicObject]
 
@@ -136,12 +157,10 @@ class Country(BaseModel):
     geometry: dict
 
 
-class CountryList(BaseModel):
+class CountryList(Catalog):
     id: Literal["world"]
-    title: str
     map: MapConfig
     objects: list[Country]
-    training_count: int
 
 
 @app.exception_handler(training.RunNotFound)
@@ -152,6 +171,11 @@ async def missing_training(_request, _error):
 @app.exception_handler(training.TaskConflict)
 async def task_conflict(_request, error):
     return JSONResponse(status_code=409, content={"detail": str(error)})
+
+
+@app.exception_handler(training.InvalidTraining)
+async def invalid_training(_request, error):
+    return JSONResponse(status_code=422, content={"detail": str(error)})
 
 
 @app.exception_handler(OperationalError)
@@ -184,26 +208,41 @@ def reference_lines():
 
 
 @app.get("/api/lists/russia", response_model=ObjectList)
-def object_list():
+def object_list(category: regions.PhysicalCategory = "russia"):
     with storage.connect() as db:
-        objects = storage.list_objects(db, include_geometry=True)
+        russian_objects = storage.list_objects(db, include_geometry=True)
+    objects = regions.physical_objects(russian_objects, category)
+    russia = category == "russia"
     return {
         "id": LIST_ID,
-        "title": "Водоёмы России",
+        "title": "Водоёмы России" if russia else "Водоёмы мира" if category == "world" else "Водоёмы",
+        "categories": regions.categories(political=False),
+        "training_count": len(objects) if russia else min(12, len(objects)),
+        "available_count": len(objects),
         "map": {
-            "bounds": [19, 41, 191, 82],
+            "bounds": (
+                [161.4, -77.78, 163.35, -77.32] if category == "antarctica"
+                else regions.REGIONS[category][1]
+            ),
+            "land": "/natural-earth-land.geojson" if russia else "/world-land.geojson",
             "hillshade_tiles": (
                 "https://services.arcgisonline.com/arcgis/rest/services/Elevation/"
                 "World_Hillshade/MapServer/tile/{z}/{y}/{x}"
             ),
             "hillshade_max_zoom": 13,
-            "reference_lines": "/api/maps/russia/reference-lines.geojson",
+            "reference_lines": (
+                "/api/maps/russia/reference-lines.geojson" if russia else "/world-boundaries.geojson"
+            ),
             "attributions": [
                 {
                     "text": "© OpenStreetMap contributors (ODbL)",
                     "url": "https://www.openstreetmap.org/copyright",
                 },
                 {"text": "Made with Natural Earth", "url": "https://www.naturalearthdata.com/"},
+                *([{
+                    "text": "SCAR Antarctic Digital Database (CC BY 4.0)",
+                    "url": "https://doi.org/10.5285/6a27ab9e-1258-49b1-bd2c-fcbed310ab45",
+                }] if category in ("world", "antarctica") else []),
                 {
                     "text": (
                         "Esri, Vantor, Airbus DS, USGS, NGA, NASA, CGIAR, N Robinson, NCEAS, "
@@ -219,29 +258,38 @@ def object_list():
 
 
 @app.post("/api/lists/russia/training", response_model=StartedTraining, status_code=201)
-def start_training(body: StartTraining | None = None):
-    return training.start((body.name or None) if body else None)
+def start_training(body: StartPhysicalTraining | None = None):
+    body = body or StartPhysicalTraining()
+    return training.start(body.name or None, category=body.category, count=body.count)
 
 
 @app.get("/api/lists/world", response_model=CountryList)
-def country_list():
+def country_list(category: regions.WorldCategory = "world"):
+    objects = countries.in_category(category)
     return {
         "id": "world",
-        "title": "Страны мира",
+        "title": "Страны мира" if category == "world" else "Страны и территории",
+        "categories": regions.categories(political=True),
+        "training_count": min(12, len(objects)),
+        "available_count": len(objects),
         "map": {
-            "bounds": [-180, -58, 180, 83.65],
+            "bounds": regions.REGIONS[category][1],
+            "land": "/world-land.geojson" if category != "world" else None,
+            "reference_lines": "/world-boundaries.geojson" if category != "world" else None,
             "attributions": [
                 {"text": "Made with Natural Earth", "url": "https://www.naturalearthdata.com/"},
             ],
         },
-        "objects": list(countries.COUNTRIES.values()),
-        "training_count": len(countries.TRAINING_IDS),
+        "objects": objects,
     }
 
 
 @app.post("/api/lists/world/training", response_model=StartedTraining, status_code=201)
-def start_country_training(body: StartTraining | None = None):
-    return training.start((body.name or None) if body else None, political=True)
+def start_country_training(body: StartCountryTraining | None = None):
+    body = body or StartCountryTraining()
+    return training.start(
+        body.name or None, political=True, category=body.category, count=body.count,
+    )
 
 
 @app.post("/api/training/{run_id}/tasks/{number}/answer", response_model=Feedback)

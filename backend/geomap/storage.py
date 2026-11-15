@@ -38,7 +38,7 @@ training_run = Table(
         server_default=text("now() + interval '24 hours'"),
     ),
     Index("training_run_expires_at_idx", "expires_at"),
-    CheckConstraint("cardinality(object_ids) BETWEEN 10 AND 15"),
+    CheckConstraint("cardinality(object_ids) >= 1", name="training_run_nonempty"),
     CheckConstraint("task_number BETWEEN 1 AND cardinality(object_ids) + 1"),
     CheckConstraint(
         "jsonb_array_length(answers) BETWEEN task_number - 1 AND task_number "
@@ -58,6 +58,14 @@ def initialize():
     with connect() as db:
         db.execute(select(func.pg_advisory_xact_lock(71054611)))
         metadata.create_all(db)
+        if db.execute(text(
+            "SELECT 1 FROM pg_constraint WHERE conrelid = 'training_run'::regclass "
+            "AND conname = 'training_run_object_ids_check' AND contype = 'c'"
+        )).scalar():
+            db.execute(text(
+                "ALTER TABLE training_run DROP CONSTRAINT training_run_object_ids_check, "
+                "ADD CONSTRAINT training_run_nonempty CHECK (cardinality(object_ids) >= 1)"
+            ))
         db.execute(
             seed.on_conflict_do_update(
                 index_elements=[geographic_object.c.id],
