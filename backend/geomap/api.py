@@ -107,12 +107,21 @@ class FinishedTraining(BaseModel):
     result: Result
 
 
+class Summit(BaseModel):
+    id: str
+    name: str
+    elevation: int
+    coordinates: tuple[float, float]
+
+
 class GeographicObject(BaseModel):
     id: str
     name: str
-    kind: Literal["lake", "river"]
+    kind: Literal["lake", "river", "mountain", "summit"]
     region: str
     geometry: dict
+    centerline: dict | None = None
+    summit: Summit | None = None
 
 
 class Attribution(BaseModel):
@@ -128,8 +137,7 @@ class MapConfig(BaseModel):
 
 
 class PhysicalMap(MapConfig):
-    hillshade_tiles: str
-    hillshade_max_zoom: int
+    relief: str
 
 
 class CategoryOption(BaseModel):
@@ -224,21 +232,13 @@ def object_list(category: regions.PhysicalCategory = "russia"):
     russia = category == "russia"
     return {
         "id": LIST_ID,
-        "title": "Водоёмы России" if russia else "Водоёмы мира" if category == "world" else "Водоёмы",
+        "title": "Природа России" if russia else "Природа мира" if category == "world" else regions.REGIONS[category][0],
         "categories": regions.categories(political=False),
-        "training_count": len(objects) if russia else min(12, len(objects)),
+        "training_count": min(12, len(objects)),
         "available_count": len(objects),
         "map": {
-            "bounds": (
-                [161.4, -77.78, 163.35, -77.32] if category == "antarctica"
-                else regions.REGIONS[category][1]
-            ),
-            "land": "/natural-earth-land.geojson" if russia else "/world-land.geojson",
-            "hillshade_tiles": (
-                "https://services.arcgisonline.com/arcgis/rest/services/Elevation/"
-                "World_Hillshade/MapServer/tile/{z}/{y}/{x}"
-            ),
-            "hillshade_max_zoom": 13,
+            "bounds": regions.REGIONS[category][1],
+            "relief": "/physical-relief.webp",
             "reference_lines": (
                 "/api/maps/russia/reference-lines.geojson" if russia else "/world-boundaries.geojson"
             ),
@@ -252,17 +252,9 @@ def object_list(category: regions.PhysicalCategory = "russia"):
                     "text": "SCAR Antarctic Digital Database (CC BY 4.0)",
                     "url": "https://doi.org/10.5285/6a27ab9e-1258-49b1-bd2c-fcbed310ab45",
                 }] if category in ("world", "antarctica") else []),
-                {
-                    "text": (
-                        "Esri, Vantor, Airbus DS, USGS, NGA, NASA, CGIAR, N Robinson, NCEAS, "
-                        "NLS, OS, NMA, Geodatastyrelsen, Rijkswaterstaat, GSA, Geoland, "
-                        "FEMA, Intermap, and the GIS user community"
-                    ),
-                    "url": "https://goto.arcgisonline.com/maps/Elevation/World_Hillshade",
-                },
             ],
         },
-        "objects": [{**obj, "region": regions.REGIONS[regions.water_continent(obj)][0]} for obj in objects],
+        "objects": [{**obj, "region": regions.REGIONS[regions.physical_continent(obj)][0]} for obj in objects],
     }
 
 

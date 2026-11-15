@@ -3,15 +3,28 @@ import L from 'leaflet'
 import { Crosshair, Minus, Plus } from 'lucide-react'
 
 const waterStyle = {
-  color: '#467e8e', weight: 1, fillColor: '#6fa2b8', fillOpacity: 0.86, smoothFactor: 0,
+  color: '#387a99', weight: 0.8, fillColor: '#82bad2', fillOpacity: 1, smoothFactor: 0,
 }
+const invisibleArea = { stroke: false, fill: true, fillOpacity: 0, smoothFactor: 0 }
 const countryColors = [
   '#e6c994', '#b9d7ae', '#edc2ab', '#b7c8e2', '#e2dca1', '#d5bfdf', '#a9d5cc',
   '#ecc5cf', '#c7d6a4', '#f0d7aa', '#bcc8df', '#e4bca1', '#c6dcd6',
 ]
 const outlineStyle = { color: '#125b50', weight: 3, fillColor: '#91d5ae', fillOpacity: 0.6, smoothFactor: 0, interactive: false }
+const physicalOutline = { ...outlineStyle, weight: 2, fill: false }
 const missedStyle = { ...outlineStyle, color: '#af4a23', fillColor: '#ef9e67', fillOpacity: 0.72 }
+const missedPhysicalOutline = { ...physicalOutline, color: missedStyle.color, weight: 3 }
 const formatPopulation = new Intl.NumberFormat('ru-RU', { notation: 'compact', maximumFractionDigits: 1 })
+const formatElevation = new Intl.NumberFormat('ru-RU')
+const physicalKinds = { river: 'Река', lake: 'Озеро', mountain: 'Горный массив' }
+const russianSeas = [
+  [74.5, 37, 'Баренцево море'],
+  [75, 73, 'Карское море'],
+  [77, 121, 'Море Лаптевых'],
+  [75, 159, 'Восточно-Сибирское море'],
+  [55.5, 146, 'Охотское море'],
+  [59, 187, 'Берингово море'],
+]
 
 function objectAt(element) {
   return element?.closest?.('[data-object-id]')?.dataset.objectId
@@ -43,7 +56,10 @@ function ObjectTooltip({ object }) {
           )}
         </div>
       ) : object.region && (
-        <p>{object.kind === 'river' ? 'Река' : 'Водоём'} · {object.region}</p>
+        <p>{physicalKinds[object.kind]} · {object.region}</p>
+      )}
+      {object.summit && (
+        <p>Высшая точка · {object.summit.name}, {formatElevation.format(object.summit.elevation)} м</p>
       )}
     </div>
   )
@@ -53,7 +69,6 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
   const element = useRef(null)
   const mapState = useRef(null)
   const hovered = useRef(null)
-  const [tilesMissing, setTilesMissing] = useState(false)
   const [inspected, setInspected] = useState(null)
   const { map: config, objects } = atlas.list
   const russia = atlas.category === 'russia'
@@ -65,10 +80,15 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
 
   const paintOutline = useEffectEvent(() => {
     const { outline, catalog } = mapState.current
-    const id = feedback && !feedback.correct
+    const missed = feedback && !feedback.correct
+    const id = missed
       ? feedback.object_id
-      : highlight && (hovered.current || (marker?.needsConfirmation && marker.objectId))
-    const style = feedback ? missedStyle : outlineStyle
+      : political
+        ? highlight && (hovered.current || (marker?.needsConfirmation && marker.objectId))
+        : !feedback && hovered.current
+    const style = political
+      ? (missed ? missedStyle : outlineStyle)
+      : (missed ? missedPhysicalOutline : physicalOutline)
     if (outline.id === id && outline.options.style === style) return
     outline.id = id
     outline.options.style = style
@@ -96,7 +116,7 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
       doubleClickZoom: false,
       zoomSnap: 0.25,
       minZoom: russia ? 1 : 0,
-      maxZoom: 18,
+      maxZoom: political ? 18 : 16,
       maxBounds: russia ? [[15, -72], [85.05, 245]] : [[-85.05, -180], [85.05, 180]],
       maxBoundsViscosity: 1,
       zoomAnimation: false,
@@ -113,15 +133,14 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
       }).addTo(map)
     }
     if (!political) {
-      L.tileLayer(config.hillshade_tiles, { maxNativeZoom: config.hillshade_max_zoom })
-        .on('loading', () => setTilesMissing(false))
-        .on('tileerror', () => setTilesMissing(true))
-        .addTo(map)
+      const limit = 85.0511287798
+      L.imageOverlay(config.relief, [[-limit, -180], [limit, 180]], { alt: '' }).addTo(map)
+      if (russia) L.imageOverlay(config.relief, [[-limit, 180], [limit, 540]], { alt: '' }).addTo(map)
     }
     if (atlas.lines) {
       const lineStyle = ({ properties }) => properties.kind === 'boundary'
-        ? { color: '#657c62', weight: 1.05, opacity: 0.62, dashArray: '4 4' }
-        : { color: '#789a96', weight: 1, opacity: 0.75 }
+        ? { color: '#5b5153', weight: 1, opacity: 0.63, dashArray: '4 4' }
+        : { color: '#547f8b', weight: 0.75, opacity: 0.38 }
       L.geoJSON(atlas.lines, { style: lineStyle, interactive: false }).addTo(map)
       if (russia) {
         L.geoJSON(atlas.lines, {
@@ -135,22 +154,62 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
         ...[30, 60, 90, 120, 150, 180, 210].map((longitude) => L.polyline([[15, longitude], [85, longitude]])),
         ...[30, 45, 60, 75].map((latitude) => L.polyline([[latitude, -72], [latitude, 245]])),
       ].map((line) => line.setStyle({ color: '#618d8c', weight: 1, opacity: 0.2, dashArray: '2 6', interactive: false }))).addTo(map)
+      for (const [latitude, longitude, label] of russianSeas) {
+        L.marker([latitude, longitude], {
+          interactive: false, keyboard: false,
+          icon: L.divIcon({ className: 'atlas-sea', html: label, iconSize: [124, 16], iconAnchor: [62, 8] }),
+        }).addTo(map)
+      }
     }
 
+    const coordsToLatLng = ([longitude, latitude]) =>
+      L.latLng(latitude, russia && longitude < 0 ? longitude + 360 : longitude)
     const catalog = new Map(objects.map((object) => [object.id, object]))
-    for (const object of objects) {
+    const summitMarkers = []
+    // Water features stay selectable where rivers and lakes cross a mountain area.
+    const mapObjects = political ? objects : [
+      ...objects.filter((object) => object.kind === 'mountain'),
+      ...objects.filter((object) => object.kind === 'river'),
+      ...objects.filter((object) => object.kind === 'lake'),
+    ]
+    for (const object of mapObjects) {
       const style = political ? {
         color: '#647b74', weight: 0.7, fillColor: countryColors[object.color - 1] ?? '#e5e7cb',
         fillOpacity: 1, smoothFactor: 0,
-      } : waterStyle
-      L.geoJSON(object.geometry, { style }).eachLayer((layer) => {
+      } : object.kind === 'mountain' || object.centerline ? invisibleArea : waterStyle
+      if (object.centerline) {
+        L.geoJSON(object.centerline, {
+          coordsToLatLng, interactive: false, style: { color: '#3b86ab', weight: 1.35, opacity: 0.9 },
+        }).addTo(map)
+      }
+      L.geoJSON(object.geometry, { style, coordsToLatLng }).eachLayer((layer) => {
         layer.addTo(map)
         const path = layer.getElement()
         path.dataset.objectId = object.id
-        path.classList.add(political ? 'country-area' : 'water-area')
+        path.classList.add(political ? 'country-area' : 'physical-area')
       })
+      if (object.summit) {
+        summitMarkers.push(L.marker(coordsToLatLng(object.summit.coordinates), {
+          interactive: false, keyboard: false,
+          icon: L.divIcon({
+            className: 'atlas-summit', iconSize: [10, 10], iconAnchor: [5, 6],
+            html: `<span class="summit-symbol"></span><span class="summit-elevation">${formatElevation.format(object.summit.elevation)}</span>`,
+          }),
+        }).addTo(map))
+      }
     }
-    const outline = L.geoJSON(null, { style: outlineStyle, interactive: false }).addTo(map)
+    const arrangeSummitLabels = () => {
+      const visible = []
+      for (const marker of summitMarkers) {
+        const point = map.latLngToLayerPoint(marker.getLatLng())
+        const overlaps = visible.some((other) => Math.abs(other.x - point.x) < 44 && Math.abs(other.y - point.y) < 14)
+        marker.getElement().classList.toggle('summit-label-overlaps', overlaps)
+        if (!overlaps) visible.push(point)
+      }
+    }
+    arrangeSummitLabels()
+    map.on('zoomend', arrangeSummitLabels)
+    const outline = L.geoJSON(null, { style: outlineStyle, coordsToLatLng, interactive: false }).addTo(map)
     const pin = L.circleMarker([0, 0], {
       radius: 7, color: '#fff', weight: 3, fillColor: '#17463c', fillOpacity: 1, interactive: false,
     })
@@ -294,11 +353,13 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
         </div>
       </div>
       <div className="map-footer">
-        {tilesMissing && <p className="tile-note">Часть тайлов рельефа может быть недоступна.</p>}
         <div className="map-legend" aria-label="Условные обозначения">
           {political ? <span><i className="legend-country" /> Границы стран</span> : (
             <>
-              <span><i className="legend-water" /> Акватория</span>
+              <span><i className="legend-relief" /> Равнины и горы</span>
+              <span><i className="legend-river" /> Реки</span>
+              <span><i className="legend-water" /> Озёра</span>
+              <span><i className="summit-symbol" /> Высшие точки</span>
               <span><i className="legend-boundary" /> Граница</span>
             </>
           )}

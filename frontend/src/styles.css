@@ -163,17 +163,42 @@ h1 {
 .map-canvas {
   position: absolute;
   inset: 0;
-  background: #cadee2;
+  background: #86acca;
   font-family: inherit;
   touch-action: none;
 }
 .map-canvas:focus-visible { outline-offset: -4px; }
-.map-canvas .leaflet-tile-pane { mix-blend-mode: multiply; opacity: 0.74; }
-.map-canvas :is(.water-area, .country-area) { pointer-events: visibleFill; }
+.map-canvas :is(.physical-area, .country-area) { pointer-events: visibleFill; }
 .political-map { background: #c8dfe9; }
 .map-frame:not(.answer-map) .country-area:hover { stroke: #37584d; }
-.answer-map .map-canvas, .answer-map :is(.water-area, .country-area) { cursor: crosshair; }
-.map-canvas.leaflet-dragging, .leaflet-dragging .map-canvas, .leaflet-dragging :is(.water-area, .country-area) { cursor: grabbing; }
+.answer-map .map-canvas, .answer-map :is(.physical-area, .country-area) { cursor: crosshair; }
+.map-canvas.leaflet-dragging, .leaflet-dragging .map-canvas, .leaflet-dragging :is(.physical-area, .country-area) { cursor: grabbing; }
+.atlas-summit { pointer-events: none; white-space: nowrap; }
+.atlas-sea {
+  color: #24546e;
+  font: italic 600 11px/16px Georgia, serif;
+  letter-spacing: 0.025em;
+  text-align: center;
+  white-space: nowrap;
+}
+.summit-symbol {
+  display: inline-block;
+  width: 10px;
+  height: 9px;
+  background: #553d30;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+.summit-elevation {
+  margin-left: 3px;
+  color: #3e3028;
+  font: 600 11px/1 Georgia, serif;
+  paint-order: stroke fill;
+  -webkit-text-stroke: 2px #fff9e7;
+}
+.answer-map .summit-elevation, .summit-label-overlaps .summit-elevation { display: none; }
+@media (max-width: 700px) {
+  .atlas-sea, .summit-elevation { display: none; }
+}
 .map-tooltip-placement {
   position: absolute;
   bottom: 41px;
@@ -279,14 +304,16 @@ h1 {
   line-height: 1.4;
 }
 .map-legend, .map-legend > span { display: flex; align-items: center; gap: 7px; }
-.map-legend { gap: 15px; }
-.map-legend i { display: inline-block; width: 15px; }
-.legend-water { height: 9px; background: #82aebc; border: 1px solid #518094; border-radius: 3px; }
+.map-legend { flex-wrap: wrap; gap: 5px 12px; }
+.map-legend > span { white-space: nowrap; }
+.map-legend i { display: inline-block; flex: none; width: 15px; }
+.legend-relief { height: 9px; background: linear-gradient(90deg, #8daa75, #f0dda3, #a36e54); border-radius: 3px; }
+.legend-river { border-top: 2px solid #3b86ab; }
+.legend-water { height: 9px; background: #82bad2; border: 1px solid #387a99; border-radius: 3px; }
 .legend-boundary { border-top: 1px dashed #536c58; }
 .legend-country { border-top: 1px solid #647b74; }
 .attribution { display: flex; flex-wrap: wrap; gap: 3px 11px; }
 .attribution a { color: inherit; text-underline-offset: 2px; }
-.tile-note { width: 100%; }
 
 .activity {
   grid-area: 1 / 2;

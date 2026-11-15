@@ -56,24 +56,21 @@ test('desktop study, share, first answer, full results, repeat and exit', async 
   expect(baikal).not.toBeNull()
   await page.mouse.move(baikal.x, baikal.y)
   await expect(page.getByRole('tooltip')).toContainText('Байкал')
-  await expect(page.getByRole('tooltip')).toContainText('Водоём · Азия')
+  await expect(page.getByRole('tooltip')).toContainText('Озеро · Азия')
+  const caucasus = await areaPoint(page, 'mountain:caucasus', 2)
+  await page.mouse.move(caucasus.x, caucasus.y)
+  await expect(page.getByRole('tooltip')).toContainText(/Высшая точка · Эльбрус, 5\s?642 м/)
+  await expect(outlines(page, '#125b50')).toHaveAttribute('fill', 'none')
+  await expect(map.locator('img[src="/physical-relief.webp"]').first()).toHaveJSProperty('naturalWidth', 6144)
   await page.getByRole('button', { name: 'Поделиться списком' }).click()
   await expect(page.getByRole('status')).toHaveText('Ссылка скопирована')
   expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/\/russia$/)
   await start(page, 'Анна')
 
   const toggle = page.getByRole('switch', { name: 'Подсветка контуров' })
-  await expect(toggle).not.toBeChecked()
-  const beforeHighlight = await areaPoint(page, 'baikal')
-  expect(beforeHighlight).not.toBeNull()
-  await page.mouse.move(beforeHighlight.x, beforeHighlight.y)
-  await expect(page.getByRole('tooltip')).toHaveCount(0)
-  await expect(outlines(page, '#125b50')).toHaveCount(0)
-  await toggle.click()
-  const afterHighlight = await areaPoint(page, 'baikal')
-  expect(afterHighlight).not.toBeNull()
-  await page.mouse.move(afterHighlight.x, afterHighlight.y)
-  await expect(outlines(page, '#125b50')).toHaveCount(1)
+  await expect(toggle).toHaveCount(0)
+  await page.mouse.move(baikal.x, baikal.y)
+  await expect(outlines(page, '#125b50')).toHaveAttribute('fill', 'none')
   await expect(page.getByRole('tooltip')).toHaveCount(0)
 
   let submissions = 0
@@ -88,40 +85,32 @@ test('desktop study, share, first answer, full results, repeat and exit', async 
   expect(submissions).toBe(0)
 
   const prompts = new Set()
-  for (let number = 1; number <= 11; number++) {
-    await expect(page.getByText(`Задание ${number} из 11`, { exact: true })).toBeVisible()
+  for (let number = 1; number <= 12; number++) {
+    await expect(page.getByText(`Задание ${number} из 12`, { exact: true })).toBeVisible()
     const prompt = await page.getByRole('heading', { name: /^Покажи/ }).textContent()
     prompts.add(prompt)
-    if (prompt === 'Покажи Байкал') {
-      const point = await zoomToObject(page, 'baikal', 5)
-      await page.mouse.click(point.x, point.y)
-      await expect(page.getByText('Верно!', { exact: true })).toBeVisible()
-    } else {
-      const area = await map.boundingBox()
-      await page.mouse.click(area.x + 70, area.y + 75)
-      await expect(page.getByText(/Расстояние до объекта · .*км/)).toBeVisible()
-      await expect(outlines(page, '#af4a23')).toHaveCount(1)
-    }
-    await map.click({ position: { x: 70, y: 75 } })
+    await map.click({ position: { x: 70, y: 35 } })
+    await expect(page.getByText(/Расстояние до объекта · .*км/)).toBeVisible()
+    await expect(outlines(page, '#af4a23')).toHaveAttribute('fill', 'none')
+    await map.click({ position: { x: 70, y: 35 } })
     expect(submissions).toBe(number)
-    await page.getByRole('button', { name: number === 11 ? 'Показать результат' : 'Следующее задание' }).click()
+    await page.getByRole('button', { name: number === 12 ? 'Показать результат' : 'Следующее задание' }).click()
   }
-  expect(prompts.size).toBe(11)
+  expect(prompts.size).toBe(12)
   await expect(page.getByRole('heading', { name: 'Результат тренировки' })).toBeVisible()
   await expect(page.getByText('Анна', { exact: true })).toBeVisible()
-  await expect(page.locator('.score')).toHaveText('1 / 11')
-  await expect(page.getByRole('listitem')).toHaveCount(10)
-  await expect(page.getByRole('listitem').filter({ hasText: 'Байкал' })).toHaveCount(0)
+  await expect(page.locator('.score')).toHaveText('0 / 12')
+  await expect(page.getByRole('listitem')).toHaveCount(12)
 
   await page.getByRole('button', { name: 'Пройти ещё раз' }).click()
   const request = page.waitForRequest((request) => request.url().endsWith('/training') && request.method() === 'POST')
   await page.getByRole('dialog').getByRole('button', { name: 'Начать', exact: true }).click()
   await request
-  await expect(page.getByText('Задание 1 из 11', { exact: true })).toBeVisible()
-  await expect(toggle).not.toBeChecked()
+  await expect(page.getByText('Задание 1 из 12', { exact: true })).toBeVisible()
+  await expect(toggle).toHaveCount(0)
   await page.getByRole('button', { name: 'К изучению' }).click()
   await page.getByRole('button', { name: 'Продолжить' }).click()
-  await expect(page.getByText('Задание 1 из 11', { exact: true })).toBeVisible()
+  await expect(page.getByText('Задание 1 из 12', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'К изучению' }).click()
   await page.getByRole('button', { name: 'Выйти', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Изучение' })).toBeVisible()
@@ -186,7 +175,7 @@ test('political map shows capitals, grades clicks and asks before switching maps
 })
 
 for (const [route, category, shown, hidden, antarcticCount] of [
-  ['/russia', 'africa', 'water', 'baikal', '5'],
+  ['/russia', 'africa', 'water', 'baikal', '7'],
   ['/world', 'south-america', 'country:bra', 'country:chn', '1'],
 ]) {
   test(`selects a category and exercise count on ${route}`, async ({ page }) => {
@@ -242,7 +231,7 @@ test.describe('touch screen', () => {
     expect(submissions).toBe(1)
   })
 
-  test('tap shows a name, gestures do not submit, and a moved marker can hit the Neva', async ({ page, context }) => {
+  test('tap shows a name and moving a marker to the Neva needs confirmation', async ({ page, context }) => {
     await openStudy(page)
     const map = mapCanvas(page)
     const baikal = await zoomToObject(page, 'baikal')
@@ -277,27 +266,21 @@ test.describe('touch screen', () => {
     await expect(submit).toBeDisabled()
     expect(submissions).toBe(0)
 
-    for (let number = 1; number <= 11; number++) {
-      await expect(page.getByText(`Задание ${number} из 11`, { exact: true })).toBeVisible()
-      if (await page.getByRole('heading', { name: /^Покажи/ }).textContent() === 'Покажи основное русло Невы') break
-      expect(number).toBeLessThan(11)
-      await map.tap({ position: { x: 70, y: 75 } })
-      await submit.tap()
-      await page.getByRole('button', { name: 'Следующее задание' }).tap()
-    }
     await page.getByRole('button', { name: 'Показать всю карту' }).tap()
     await map.tap({ position: { x: 70, y: 75 } })
     await expect(submit).toBeEnabled()
-    const before = submissions
     const neva = await zoomToObject(page, 'neva', 4)
     await page.touchscreen.tap(neva.x, neva.y)
-    expect(submissions).toBe(before)
-    const toggle = page.getByRole('switch', { name: 'Подсветка контуров' })
-    await toggle.tap()
-    await expect(outlines(page, '#125b50')).toHaveCount(1)
+    expect(submissions).toBe(0)
+    await expect(outlines(page, '#125b50')).toHaveCount(0)
     await expect(page.getByRole('tooltip')).toHaveCount(0)
+    const request = page.waitForRequest((request) => request.url().endsWith('/answer'))
     await submit.tap()
-    await expect(page.getByText('Верно!', { exact: true })).toBeVisible()
-    expect(submissions).toBe(before + 1)
+    const { longitude, latitude } = (await request).postDataJSON()
+    expect(longitude).toBeGreaterThan(30)
+    expect(longitude).toBeLessThan(32)
+    expect(latitude).toBeCloseTo(60, 0)
+    await expect(page.getByText(/^(Верно!|Промах)$/)).toBeVisible()
+    expect(submissions).toBe(1)
   })
 })

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Compass, Crosshair, Globe2,
-  Link2, MapPin, MousePointer2, RotateCcw, Target, Waves, X,
+  Link2, MapPin, Mountain, MousePointer2, RotateCcw, Target, X,
 } from 'lucide-react'
 import { MapView } from './MapView'
 import { request } from './api'
@@ -10,8 +10,8 @@ const political = /^\/world\/?$/.test(window.location.pathname)
 const listPath = political ? '/world' : '/russia'
 const listEndpoint = `/api/lists${listPath}`
 const defaultCategory = political ? 'world' : 'russia'
-const listTitle = political ? 'Страны мира' : 'Водоёмы России'
-const ObjectIcon = political ? Globe2 : Waves
+const listTitle = political ? 'Страны мира' : 'Природа России'
+const ObjectIcon = political ? Globe2 : Mountain
 
 export function App() {
   const [category, setCategory] = useState(() => new URLSearchParams(window.location.search).get('category') || defaultCategory)
@@ -226,7 +226,7 @@ export function App() {
       <main>
         <nav className="map-switcher" aria-label="Выбор карты">
           <a href="/russia" aria-current={!political ? 'page' : undefined} onClick={switchMap}>
-            <Waves size={16} aria-hidden="true" /> Физическая
+            <Mountain size={16} aria-hidden="true" /> Физическая
           </a>
           <a href="/world" aria-current={political ? 'page' : undefined} onClick={switchMap}>
             <Globe2 size={16} aria-hidden="true" /> Политическая
@@ -272,11 +272,13 @@ export function App() {
                           <p className="desktop-hint">Укажи объект кликом по карте.</p>
                           <p className="touch-hint">Поставь метку на карте и подтверди ответ.</p>
                           <p className="hybrid-hint">Клик отправляет ответ. Касанием можно поставить метку и подтвердить её кнопкой.</p>
-                          <label className="switch-row">
-                            <Crosshair size={20} />
-                            <span>Подсветка контуров</span>
-                            <input type="checkbox" role="switch" checked={highlight} onChange={(event) => setHighlight(event.target.checked)} />
-                          </label>
+                          {political && (
+                            <label className="switch-row">
+                              <Crosshair size={20} />
+                              <span>Подсветка контуров</span>
+                              <input type="checkbox" role="switch" checked={highlight} onChange={(event) => setHighlight(event.target.checked)} />
+                            </label>
+                          )}
                         </>
                       )}
                       {feedback && (
@@ -314,14 +316,14 @@ export function App() {
                         </>
                       ) : (
                         <>
-                          <p className="desktop-hint">Наведи указатель на водоём, чтобы узнать его название.</p>
-                          <p className="touch-hint">Коснись водоёма, чтобы узнать его название.</p>
-                          <p className="hybrid-hint">Наведи указатель на водоём или коснись его, чтобы узнать название.</p>
+                          <p className="desktop-hint">Наведи указатель на горы, реку или озеро, чтобы узнать название.</p>
+                          <p className="touch-hint">Коснись гор, реки или озера, чтобы узнать название.</p>
+                          <p className="hybrid-hint">Наведи указатель на объект или коснись его, чтобы узнать название.</p>
                         </>
                       )}
                       <div className="map-tip">
                         <MousePointer2 size={20} />
-                        <p>Приближай и перемещай карту, чтобы рассмотреть {political ? 'небольшие страны' : 'небольшие водоёмы'}.</p>
+                        <p>{political ? 'Приближай и перемещай карту, чтобы рассмотреть небольшие страны.' : 'На заданиях о вершинах достаточно указать сам горный массив.'}</p>
                       </div>
                       <div className="activity-actions">
                         {ready && <div className="object-count"><ObjectIcon size={17} /> Объектов в списке <strong>{atlas.list.available_count}</strong></div>}

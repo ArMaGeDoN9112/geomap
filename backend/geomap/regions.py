@@ -22,12 +22,18 @@ REGIONS = {
     "russia": ("Россия", [19, 41, 191, 82]),
 }
 
-WORLD_WATERS = {
+EXTRA_PHYSICAL = {
     obj["id"]: obj
-    for obj in json.loads(
-        (Path(__file__).parent / "data" / "world-water-objects.json").read_text(encoding="utf-8")
-    )
+    for filename in ("world-water-objects.json", "atlas-objects.json")
+    for obj in json.loads((Path(__file__).parent / "data" / filename).read_text(encoding="utf-8"))
 }
+for mountain in list(EXTRA_PHYSICAL.values()):
+    if mountain["kind"] == "mountain":
+        summit = mountain["summit"]
+        EXTRA_PHYSICAL[summit["id"]] = {
+            **mountain, "id": summit["id"], "name": summit["name"], "kind": "summit",
+            "prompt": f'Покажи горный массив, где находится вершина «{summit["name"]}»',
+        }
 ASIAN_RUSSIAN_WATERS = {"baikal", "khanka", "taymyr"}
 
 
@@ -35,18 +41,18 @@ def included_continents(category: str):
     return ("europe", "asia") if category == "eurasia" else (category,)
 
 
-def water_continent(obj):
+def physical_continent(obj):
     return obj.get("continent") or ("asia" if obj["id"] in ASIAN_RUSSIAN_WATERS else "europe")
 
 
 def physical_objects(russian_objects, category: PhysicalCategory):
     if category == "russia":
-        return list(russian_objects)
+        return [*russian_objects, *(obj for obj in EXTRA_PHYSICAL.values() if obj.get("russia"))]
 
     continents = included_continents(category)
     return [
-        obj for obj in [*russian_objects, *WORLD_WATERS.values()]
-        if category == "world" or water_continent(obj) in continents
+        obj for obj in [*russian_objects, *EXTRA_PHYSICAL.values()]
+        if category == "world" or physical_continent(obj) in continents
     ]
 
 

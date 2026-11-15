@@ -8,7 +8,7 @@ from shapely.geometry import shape
 from sqlalchemy import create_engine
 from sqlalchemy.schema import CreateSchema, DropSchema
 
-from geomap import countries, storage, training
+from geomap import countries, regions, storage, training
 from geomap.api import app
 
 
@@ -45,13 +45,22 @@ def point(longitude, latitude):
     return {"longitude": longitude, "latitude": latitude}
 
 
-def test_catalog_provides_water_areas_and_reference_layers(client, catalog):
+def test_catalog_provides_atlas_objects_and_reference_layers(client, catalog):
     assert client.get("/api/health").json() == {"status": "ok"}
     assert catalog["id"] == "russia"
-    assert len(catalog["objects"]) == 11
-    assert {obj["kind"] for obj in catalog["objects"]} == {"lake", "river"}
+    assert catalog["map"]["relief"] == "/physical-relief.webp"
+    assert catalog["training_count"] == 12
+    assert {obj["kind"] for obj in catalog["objects"]} == {"lake", "river", "mountain", "summit"}
     assert {obj["region"] for obj in catalog["objects"]} == {"Европа", "Азия"}
     assert all(shape(obj["geometry"]).is_valid for obj in catalog["objects"])
+    objects = {obj["id"]: obj for obj in catalog["objects"]}
+    for mountain in (obj for obj in objects.values() if obj["kind"] == "mountain"):
+        summit = mountain["summit"]
+        assert objects[summit["id"]]["geometry"] == mountain["geometry"]
+        assert shape(mountain["geometry"]).covers(shape({"type": "Point", "coordinates": summit["coordinates"]}))
+    assert shape(objects["river:volga"]["geometry"]).covers(
+        shape(objects["river:volga"]["centerline"]).representative_point()
+    )
 
     response = client.get(catalog["map"]["reference_lines"])
     assert response.headers["content-type"] == "application/geo+json"
@@ -162,7 +171,9 @@ def test_category_and_count_limit_training_to_distinct_catalog_objects(client, m
 
 
 def test_full_training_scores_only_first_answers_and_waits_for_next(client, catalog):
-    started = client.post("/api/lists/russia/training", json={"name": " Анна "})
+    started = client.post("/api/lists/russia/training", json={
+        "name": " Анна ", "count": catalog["available_count"],
+    })
     assert started.status_code == 201
     run = started.json()
     path = f"/api/training/{run['id']}"
@@ -175,7 +186,8 @@ def test_full_training_scores_only_first_answers_and_waits_for_next(client, cata
     assert task["total"] == len(areas)
     # Determine the object from the prompt sent to the pupil.
     with storage.connect() as db:
-        prompt_ids = {row["prompt"]: row["id"] for row in storage.list_objects(db)}
+        objects = regions.physical_objects(storage.list_objects(db), "russia")
+    prompt_ids = {obj["prompt"]: obj["id"] for obj in objects}
 
     for number in range(1, task["total"] + 1):
         assert task["number"] == number
@@ -242,6 +254,21 @@ def test_http_grading_handles_shores_misses_and_distance_format(client, catalog,
             assert feedback["distance_label"] == label
         else:
             assert feedback["distance_km"] > 100
+
+
+def test_summit_task_accepts_the_mountain_range_and_rejects_another_range(client, monkeypatch):
+    monkeypatch.setattr(
+        training.random, "shuffle",
+        lambda objects: objects.sort(key=lambda obj: obj["id"] != "summit:caucasus"),
+    )
+    for coordinates, correct in [(point(43.9, 42.7), True), (point(60.123, 65.027), False)]:
+        started = client.post("/api/lists/russia/training", json={"count": 1}).json()
+        assert "Эльбрус" in started["task"]["prompt"]
+        feedback = client.post(
+            f"/api/training/{started['id']}/tasks/1/answer", json=coordinates
+        ).json()
+        assert feedback["object_id"] == "summit:caucasus"
+        assert feedback["correct"] is correct
 
 
 @pytest.mark.parametrize(
