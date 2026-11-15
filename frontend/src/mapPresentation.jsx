@@ -1,6 +1,8 @@
 import { createPortal } from 'react-dom'
 import { Crosshair, Minus, Plus } from 'lucide-react'
 
+export const physicalMapColors = { boundary: '#fff5ddae', river: '#73bfd4', water: '#82bad266' }
+
 export const countryColors = [
   '#e6c994', '#b9d7ae', '#edc2ab', '#b7c8e2', '#e2dca1', '#d5bfdf', '#a9d5cc',
   '#ecc5cf', '#c7d6a4', '#f0d7aa', '#bcc8df', '#e4bca1', '#c6dcd6',

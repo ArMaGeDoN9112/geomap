@@ -1,9 +1,9 @@
 import { lazy, Suspense, useEffect, useEffectEvent, useRef, useState } from 'react'
 import L from 'leaflet'
-import { MapControls, MapInspection, countryColors, mappedObjects } from './mapPresentation'
+import { MapControls, MapInspection, countryColors, mappedObjects, physicalMapColors } from './mapPresentation'
 
 const waterStyle = {
-  color: '#387a99', weight: 0.8, fillColor: '#82bad2', fillOpacity: 1, smoothFactor: 0,
+  stroke: false, fillColor: physicalMapColors.water, fillOpacity: 1, smoothFactor: 0,
 }
 const invisibleArea = { stroke: false, fill: true, fillOpacity: 0, smoothFactor: 0 }
 const outlineStyle = { color: '#125b50', weight: 3, fillColor: '#91d5ae', fillOpacity: 0.6, smoothFactor: 0, interactive: false }
@@ -93,12 +93,18 @@ function FlatMap({ atlas, political, taskNumber, highlight, marker, feedback, on
     }
     if (!political) {
       const limit = 85.0511287798
-      L.imageOverlay(config.relief, [[-limit, -180], [limit, 180]], { alt: '' }).addTo(map)
-      if (russia) L.imageOverlay(config.relief, [[-limit, 180], [limit, 540]], { alt: '' }).addTo(map)
+      const overview = { alt: '', pane: 'tilePane', zIndex: 0 }
+      L.imageOverlay('/flat-satellite.jpg', [[-limit, -180], [limit, 180]], overview).addTo(map)
+      if (russia) L.imageOverlay('/flat-satellite.jpg', [[-limit, 180], [limit, 540]], overview).addTo(map)
+      L.tileLayer('https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/GoogleMapsCompatible/{z}/{y}/{x}.jpg', {
+        minZoom: 5, maxZoom: 16, maxNativeZoom: 14, updateWhenIdle: true,
+      }).addTo(map)
     }
     if (atlas.lines) {
       const lineStyle = ({ properties }) => properties.kind === 'boundary'
-        ? { color: '#5b5153', weight: 1, opacity: 0.63, dashArray: '4 4' }
+        ? (political
+          ? { color: '#5b5153', weight: 1, opacity: 0.63, dashArray: '4 4' }
+          : { color: physicalMapColors.boundary, weight: 1 })
         : { color: '#547f8b', weight: 0.75, opacity: 0.38 }
       L.geoJSON(atlas.lines, { style: lineStyle, interactive: false }).addTo(map)
       if (russia) {
@@ -132,7 +138,7 @@ function FlatMap({ atlas, political, taskNumber, highlight, marker, feedback, on
       } : object.kind === 'mountain' || object.centerline ? invisibleArea : waterStyle
       if (object.centerline) {
         L.geoJSON(object.centerline, {
-          coordsToLatLng, interactive: false, style: { color: '#3b86ab', weight: 1.35, opacity: 0.9 },
+          coordsToLatLng, interactive: false, style: { color: physicalMapColors.river, weight: 1.35 },
         }).addTo(map)
       }
       L.geoJSON(object.geometry, { style, coordsToLatLng }).eachLayer((layer) => {
@@ -285,7 +291,7 @@ function FlatMap({ atlas, political, taskNumber, highlight, marker, feedback, on
   return (
     <>
       <div
-        className={`map-canvas${political ? ' political-map' : ''}`}
+        className={`map-canvas ${political ? 'political-map' : 'satellite-map'}`}
         ref={element}
         aria-label={russia ? 'Интерактивная карта России' : 'Интерактивная карта мира'}
         aria-describedby={!training && inspected ? 'keyboard-guide map-tooltip' : 'keyboard-guide'}
@@ -345,7 +351,7 @@ function MapFooter({ atlas, political, globe, active }) {
       <div className="attribution">
         {atlas.list.map.attributions.map(({ text, url }) => <a key={url} href={url} target="_blank" rel="noreferrer">{text}</a>)}
         {globe && <a href="https://www.ncei.noaa.gov/products/etopo-global-relief-model" target="_blank" rel="noreferrer">NOAA ETOPO 2022</a>}
-        {globe && !political && (
+        {!political && (
           <a href="https://cloudless.eox.at/" target="_blank" rel="noreferrer">
             EOxCloudless by EOX IT Services GmbH · modified Copernicus Sentinel data 2016 &amp; 2017
           </a>

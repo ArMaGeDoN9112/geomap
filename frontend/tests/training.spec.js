@@ -61,7 +61,7 @@ test('desktop study, share, first answer, full results, repeat and exit', async 
   await page.mouse.move(caucasus.x, caucasus.y)
   await expect(page.getByRole('tooltip')).toContainText(/Высшая точка · Эльбрус, 5\s?642 м/)
   await expect(outlines(page, '#125b50')).toHaveAttribute('fill', 'none')
-  await expect(map.locator('img[src="/physical-relief.webp"]').first()).toHaveJSProperty('naturalWidth', 6144)
+  await expect(map.locator('img[src="/flat-satellite.jpg"]').first()).toHaveJSProperty('naturalWidth', 4096)
   await page.getByRole('button', { name: 'Поделиться списком' }).click()
   await expect(page.getByRole('status')).toHaveText('Ссылка скопирована')
   expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/\/russia$/)

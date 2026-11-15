@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('fetches more detailed satellite tiles on zoom and redraws the selected region', async ({ page }) => {
+test('loads detailed satellite tiles in both physical map views', async ({ page }) => {
   await page.goto('/russia?category=south-america')
   const tile = await page.evaluate(() => {
     const canvas = document.createElement('canvas')
@@ -14,21 +14,26 @@ test('fetches more detailed satellite tiles on zoom and redraws the selected reg
   let release
   const held = new Promise((resolve) => { release = resolve })
   await page.route('https://tiles.maps.eox.at/**', async (route) => {
-    levels.add(Number(new URL(route.request().url()).pathname.split('/').at(-3)))
-    await held
+    const path = new URL(route.request().url()).pathname
+    if (path.includes('/WGS84/')) {
+      levels.add(Number(path.split('/').at(-3)))
+      await held
+    }
     await route.fulfill({ contentType: 'image/png', body: Buffer.from(tile, 'base64'), headers: { 'access-control-allow-origin': '*' } })
   })
   const overview = page.waitForResponse((response) => response.url().endsWith('/globe-satellite.jpg'))
   const flat = page.getByLabel('Интерактивная карта мира')
   await expect(flat).toBeVisible()
   const flatArea = await flat.boundingBox()
+  const zoom = page.getByRole('button', { name: 'Приблизить' })
+  for (let click = 0; click < 3; click++) await zoom.click()
+  await expect(flat.locator('img.leaflet-tile-loaded').first()).toHaveJSProperty('naturalWidth', 256)
   await page.getByRole('button', { name: '3D', exact: true }).click()
   const globe = page.getByRole('region', { name: 'Интерактивный глобус' })
   await expect(globe.locator('canvas')).toBeVisible({ timeout: 15_000 })
   expect((await overview).ok()).toBe(true)
   expect(await globe.boundingBox()).toEqual(flatArea)
   expect(levels.size).toBe(0)
-  const zoom = page.getByRole('button', { name: 'Приблизить' })
   for (let click = 0; click < 4; click++) await zoom.click()
   await expect.poll(() => levels.size).toBe(1)
   await zoom.click()

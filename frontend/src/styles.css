@@ -221,6 +221,7 @@ h1 {
 }
 .map-canvas :is(.physical-area, .country-area) { pointer-events: visibleFill; }
 .political-map { background: #c8dfe9; }
+.satellite-map { background: #152b3a; }
 .map-frame:not(.answer-map) .country-area:hover { stroke: #37584d; }
 .answer-map .map-canvas, .answer-map :is(.physical-area, .country-area) { cursor: crosshair; }
 .map-canvas.leaflet-dragging, .leaflet-dragging .map-canvas, .leaflet-dragging :is(.physical-area, .country-area) { cursor: grabbing; }
@@ -232,6 +233,7 @@ h1 {
   text-align: center;
   white-space: nowrap;
 }
+.satellite-map .atlas-sea { color: #e2f3fa; text-shadow: 0 1px 2px #091c2c; }
 .summit-symbol {
   display: inline-block;
   width: 10px;
@@ -372,7 +374,7 @@ h1 {
 .map-legend > span { white-space: nowrap; }
 .map-legend i { display: inline-block; flex: none; width: 15px; }
 .legend-relief { height: 9px; background: linear-gradient(90deg, #8daa75, #f0dda3, #a36e54); border-radius: 3px; }
-.legend-river { border-top: 2px solid #3b86ab; }
+.legend-river { border-top: 2px solid #73bfd4; }
 .legend-water { height: 9px; background: #82bad2; border: 1px solid #387a99; border-radius: 3px; }
 .legend-boundary { border-top: 1px dashed #536c58; }
 .legend-country { border-top: 1px solid #647b74; }

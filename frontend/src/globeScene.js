@@ -4,7 +4,7 @@ import {
 } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { acceleratedRaycast, MeshBVH } from 'three-mesh-bvh'
-import { countryColors, mappedObjects } from './mapPresentation'
+import { countryColors, mappedObjects, physicalMapColors } from './mapPresentation'
 import { globeImagery } from './globeImagery'
 
 const gridWidth = 1440
@@ -136,7 +136,7 @@ function paintAtlas(context, atlas, political, pathFor) {
   for (const { geometry, properties } of atlas.lines?.features ?? []) {
     if (!geometry) continue
     const boundary = properties?.kind === 'boundary' || political
-    context.strokeStyle = boundary ? (political ? '#4e514fa0' : '#fff5ddae') : '#547f8b80'
+    context.strokeStyle = boundary ? (political ? '#4e514fa0' : physicalMapColors.boundary) : '#547f8b80'
     context.lineWidth = 1
     context.stroke(pathFor(geometry))
   }
@@ -150,11 +150,11 @@ function paintAtlas(context, atlas, political, pathFor) {
       context.lineWidth = 1
       context.stroke(path)
     } else if (object.centerline) {
-      context.strokeStyle = '#73bfd4'
+      context.strokeStyle = physicalMapColors.river
       context.lineWidth = 1.25
       context.stroke(pathFor(object.centerline))
     } else if (object.kind === 'lake' || object.kind === 'river') {
-      context.fillStyle = '#82bad266'
+      context.fillStyle = physicalMapColors.water
       context.fill(path, 'evenodd')
     }
   }
