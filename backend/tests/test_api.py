@@ -1,0 +1,188 @@
+import os
+from concurrent.futures import ThreadPoolExecutor
+from uuid import uuid4
+
+import pytest
+from fastapi.testclient import TestClient
+from psycopg import sql
+from shapely.geometry import shape
+
+from geomap import storage, training
+from geomap.api import app
+
+
+@pytest.fixture(scope="module")
+def client():
+    if os.getenv("GEOMAP_TEST_DB") != "1":
+        pytest.skip("Укажите параметры тестового PostgreSQL и GEOMAP_TEST_DB=1")
+
+    schema = sql.Identifier(f"test_{uuid4().hex}")
+    with storage.connect() as db:
+        db.execute(sql.SQL("CREATE SCHEMA {}").format(schema))
+    try:
+        with pytest.MonkeyPatch.context() as env:
+            env.setenv("PGOPTIONS", f"-c search_path={schema.as_string()}")
+            with TestClient(app) as client:
+                yield client
+    finally:
+        with storage.connect() as db:
+            db.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(schema))
+
+
+@pytest.fixture(scope="module")
+def catalog(client):
+    response = client.get("/api/lists/russia")
+    assert response.status_code == 200
+    return response.json()
+
+
+def point(longitude, latitude):
+    return {"longitude": longitude, "latitude": latitude}
+
+
+def test_catalog_provides_water_areas_and_reference_layers(client, catalog):
+    assert client.get("/api/health").json() == {"status": "ok"}
+    assert catalog["id"] == "russia"
+    assert len(catalog["objects"]) == 11
+    assert {obj["kind"] for obj in catalog["objects"]} == {"lake", "river"}
+    assert all(shape(obj["geometry"]).is_valid for obj in catalog["objects"])
+
+    response = client.get(catalog["map"]["reference_lines"])
+    assert response.headers["content-type"] == "application/geo+json"
+    assert response.json()["type"] == "FeatureCollection"
+    assert {f["properties"]["kind"] for f in response.json()["features"]} == {
+        "coastline",
+        "boundary",
+    }
+
+
+def test_full_training_scores_only_first_answers_and_waits_for_next(client, catalog):
+    started = client.post("/api/lists/russia/training", json={"name": " Анна "})
+    assert started.status_code == 201
+    run = started.json()
+    path = f"/api/training/{run['id']}"
+    assert client.post(f"{path}/tasks/1/next").status_code == 409
+    assert client.post(f"{path}/tasks/2/answer", json=point(0, 0)).status_code == 409
+
+    tasks = []
+    task = run["task"]
+    areas = {obj["id"]: shape(obj["geometry"]) for obj in catalog["objects"]}
+    assert task["total"] == len(areas)
+    # Determine the object from the prompt sent to the pupil.
+    with storage.connect() as db:
+        prompt_ids = {row["prompt"]: row["id"] for row in storage.list_objects(db)}
+
+    for number in range(1, task["total"] + 1):
+        assert task["number"] == number
+        object_id = prompt_ids[task["prompt"]]
+        tasks.append(object_id)
+        inside = point(*areas[object_id].representative_point().coords[0])
+        answer_url = f"{path}/tasks/{number}/answer"
+        submitted = client.post(answer_url, json=point(0, 0) if number == 1 else inside)
+        assert submitted.status_code == 200
+        feedback = submitted.json()
+        assert feedback["object_id"] == object_id
+        assert feedback["correct"] is (number != 1)
+        if number == 1:
+            assert client.post(answer_url, json=inside).json() == feedback
+
+        next_url = f"{path}/tasks/{number}/next"
+        following = client.post(next_url)
+        assert following.status_code == 200
+        assert client.post(next_url).json() == following.json()
+        task = following.json().get("task")
+
+    assert set(tasks) == set(areas) and len(set(tasks)) == len(tasks)
+    missed_name = next(obj["name"] for obj in catalog["objects"] if obj["id"] == tasks[0])
+    assert following.json() == {
+        "result": {
+            "name": "Анна",
+            "correct": len(areas) - 1,
+            "total": len(areas),
+            "missed": [{"id": tasks[0], "name": missed_name}],
+        }
+    }
+    repeat = client.post("/api/lists/russia/training")
+    assert repeat.status_code == 201
+    assert repeat.json()["id"] != run["id"]
+    repeat_path = f"/api/training/{repeat.json()['id']}"
+    assert client.delete(repeat_path).status_code == 204
+    assert client.post(f"{repeat_path}/tasks/1/answer", json=point(0, 0)).status_code == 404
+
+
+def test_http_grading_handles_shores_misses_and_distance_format(client, catalog, monkeypatch):
+    monkeypatch.setattr(
+        training.random, "shuffle",
+        lambda objects: objects.sort(key=lambda obj: obj["id"] != "ladoga"),
+    )
+    ladoga = next(obj for obj in catalog["objects"] if obj["id"] == "ladoga")
+    shoreline = max(shape(ladoga["geometry"]).exterior.coords, key=lambda coordinates: coordinates[1])
+    longitude, latitude = shoreline
+
+    cases = [
+        (point(31.5, 60.8), True, None, None),
+        (point(*shoreline), True, None, None),
+        (point(longitude, latitude + 0.0005), False, 0.1, "Менее 0,1 км"),
+        (point(longitude, latitude + 0.0123), False, 1.4, "1,4 км"),
+        (point(35.65, 61.55), False, None, None),  # Lake Onega
+    ]
+    for answer, correct, km, label in cases:
+        started = client.post("/api/lists/russia/training").json()
+        response = client.post(f"/api/training/{started['id']}/tasks/1/answer", json=answer)
+        assert response.status_code == 200
+        feedback = response.json()
+        assert feedback["correct"] is correct
+        if km is not None or correct:
+            assert feedback["distance_km"] == km
+            assert feedback["distance_label"] == label
+        else:
+            assert feedback["distance_km"] > 100
+
+
+@pytest.mark.parametrize(
+    ("object_id", "coordinates"),
+    [
+        ("khanka", [(132.20, 45.27), (132.45, 44.93)]),
+        ("peipus", [(27.25, 58.65), (27.69, 58.67)]),
+        ("pskov", [(27.615, 57.98), (28.05, 57.98)]),
+        ("neva", [(31.028, 59.950), (30.962, 59.857), (30.280, 59.933)]),
+    ],
+)
+def test_http_grading_covers_both_sides_of_border_lakes_and_the_neva(
+    client, monkeypatch, object_id, coordinates
+):
+    monkeypatch.setattr(
+        training.random, "shuffle",
+        lambda objects: objects.sort(key=lambda obj: obj["id"] != object_id),
+    )
+    for longitude, latitude in coordinates:
+        run = client.post("/api/lists/russia/training").json()
+        response = client.post(
+            f"/api/training/{run['id']}/tasks/1/answer", json=point(longitude, latitude)
+        )
+        assert response.status_code == 200
+        assert response.json()["correct"] is True
+
+
+def test_simultaneous_answers_return_the_same_first_feedback(client):
+    started = client.post("/api/lists/russia/training").json()
+    url = f"/api/training/{started['id']}/tasks/1/answer"
+    with ThreadPoolExecutor(max_workers=2) as threads:
+        responses = list(
+            threads.map(lambda pos: client.post(url, json=pos), [point(0, 0), point(31.5, 60.8)])
+        )
+    assert [response.status_code for response in responses] == [200, 200]
+    assert responses[0].json() == responses[1].json()
+
+
+def test_invalid_request_is_rejected_before_accessing_database():
+    client = TestClient(app)
+    url = f"/api/training/{uuid4()}/tasks/1/answer"
+    assert client.post(url, json=point(181, 0)).status_code == 422
+    assert client.post(url, json=point("30", 60)).status_code == 422
+    response = client.post(
+        url, content='{"longitude": NaN, "latitude": 0}',
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status_code == 422
+    assert client.post("/api/lists/russia/training", json={"name": "\0"}).status_code == 422
