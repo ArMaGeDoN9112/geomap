@@ -1,6 +1,63 @@
 import { expect, test } from '@playwright/test'
 
+test('switches 3D hover outlines without uploading the globe texture again', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.globeUploads = []
+    const upload = WebGL2RenderingContext.prototype.texSubImage2D
+    WebGL2RenderingContext.prototype.texSubImage2D = function (...args) {
+      const source = args.at(-1)
+      if (source instanceof HTMLCanvasElement) window.globeUploads.push(source.width * source.height)
+      return upload.apply(this, args)
+    }
+  })
+  const country = (id, name, west, east) => ({
+    id, name, color: 1,
+    geometry: { type: 'Polygon', coordinates: [[[west, 12], [east, 12], [east, 32], [west, 32], [west, 12]]] },
+  })
+  await page.route('**/api/lists/world?category=world', (route) => route.fulfill({ json: {
+    title: 'Страны мира', categories: [{ id: 'world', label: 'Весь мир' }], available_count: 2,
+    map: { bounds: [-180, -90, 180, 90], attributions: [] },
+    objects: [country('west', 'Запад', -2, 18), country('east', 'Восток', 18, 38)],
+  } }))
+  await page.goto('/world')
+  await page.getByRole('button', { name: '3D', exact: true }).click()
+  const globe = page.getByLabel('Интерактивный глобус')
+  const canvas = globe.locator('canvas')
+  await expect(globe).toHaveAttribute('aria-busy', 'false', { timeout: 15_000 })
+  const initial = await canvas.screenshot()
+  const background = await page.evaluate(() => Math.max(...window.globeUploads.splice(0)))
+  expect(background).toBeGreaterThan(0)
+  const { x, y, width, height } = await canvas.boundingBox()
+  let previous = initial
+  for (const [offset, name] of [[-50, 'Запад'], [50, 'Восток'], [-50, 'Запад']]) {
+    await page.mouse.move(x + width / 2 + offset, y + height / 2)
+    await expect(page.getByRole('tooltip')).toContainText(name)
+    const current = await canvas.screenshot()
+    expect(current.equals(previous)).toBe(false)
+    previous = current
+  }
+  await page.mouse.move(0, 0)
+  await expect(page.getByRole('tooltip')).toHaveCount(0)
+  await expect.poll(async () => (await canvas.screenshot()).equals(initial)).toBe(true)
+  const uploads = await page.evaluate(() => window.globeUploads)
+  expect(Math.max(0, ...uploads)).toBeLessThan(background / 8)
+})
+
 test('loads detailed satellite tiles in both physical map views', async ({ page }) => {
+  await page.route('**/api/lists/russia?category=south-america', async (route) => {
+    const response = await route.fetch()
+    const list = await response.json()
+    const [west, south, east, north] = list.map.bounds
+    const lon = (west + east) / 2
+    const lat = (south + north) / 2
+    list.objects.push({
+      id: 'test-lake', name: 'Тестовое озеро', kind: 'lake',
+      geometry: { type: 'Polygon', coordinates: [[
+        [lon - 1, lat - 1], [lon + 1, lat - 1], [lon + 1, lat + 1], [lon - 1, lat + 1], [lon - 1, lat - 1],
+      ]] },
+    })
+    await route.fulfill({ response, json: list })
+  })
   await page.goto('/russia?category=south-america')
   const tile = await page.evaluate(() => {
     const canvas = document.createElement('canvas')
@@ -43,6 +100,14 @@ test('loads detailed satellite tiles in both physical map views', async ({ page 
   const before = await globe.screenshot()
   release()
   await expect.poll(async () => (await globe.screenshot()).equals(before)).toBe(false)
+  const detailed = await globe.screenshot()
+  const { x, y, width, height } = await globe.boundingBox()
+  await page.mouse.move(x + width / 2, y + height / 2)
+  await expect(page.getByRole('tooltip')).toContainText('Тестовое озеро')
+  expect((await globe.screenshot()).equals(detailed)).toBe(false)
+  await page.mouse.move(0, 0)
+  await expect(page.getByRole('tooltip')).toHaveCount(0)
+  await expect.poll(async () => (await globe.screenshot()).equals(detailed)).toBe(true)
 })
 
 test('switches to the globe, rotates it and answers with coordinates', async ({ page }) => {

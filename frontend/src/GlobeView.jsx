@@ -35,9 +35,20 @@ export default function GlobeView({ atlas, political, taskNumber, highlight, mar
     setStatus('loading')
     setHovered(null)
 
-    const clear = () => setHovered(null)
+    let hoverFrame = null
+    let hoverEvent = null
+    const cancelHover = () => {
+      if (hoverFrame !== null) cancelAnimationFrame(hoverFrame)
+      hoverFrame = null
+      hoverEvent = null
+    }
+    const clear = () => {
+      cancelHover()
+      setHovered(null)
+    }
     const pointerLeave = (event) => {
       if (event.pointerType === 'mouse') clear()
+      else cancelHover()
     }
     let pressed = null
     const pointers = new Set()
@@ -46,6 +57,7 @@ export default function GlobeView({ atlas, political, taskNumber, highlight, mar
       return globe.current.pick(2 * (event.clientX - left) / width - 1, 1 - 2 * (event.clientY - top) / height)
     }
     const pointerDown = (event) => {
+      cancelHover()
       pointers.add(event.pointerId)
       pressed = pointers.size === 1 && event.button === 0 ? event : null
     }
@@ -57,7 +69,12 @@ export default function GlobeView({ atlas, political, taskNumber, highlight, mar
           clear()
         }
       } else if (event.pointerType !== 'touch' && !event.buttons) {
-        setHovered(pick(event)?.object ?? null)
+        hoverEvent = event
+        if (hoverFrame === null) hoverFrame = requestAnimationFrame(() => {
+          hoverFrame = null
+          setHovered(pick(hoverEvent)?.object ?? null)
+          hoverEvent = null
+        })
       }
     }
     const pointerUp = (event) => {
@@ -89,6 +106,7 @@ export default function GlobeView({ atlas, political, taskNumber, highlight, mar
     }
     const contextLost = (event) => {
       event.preventDefault()
+      cancelHover()
       setStatus('failed')
     }
     const events = {
@@ -108,6 +126,7 @@ export default function GlobeView({ atlas, political, taskNumber, highlight, mar
     })
     return () => {
       controller.abort()
+      cancelHover()
       for (const [type, listener] of Object.entries(events)) container.removeEventListener(type, listener, true)
       globe.current?.dispose()
       globe.current = null

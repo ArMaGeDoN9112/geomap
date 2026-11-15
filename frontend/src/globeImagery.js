@@ -24,8 +24,7 @@ function tilePlan(bounds, pixelWidth, pixelHeight, maxTextureSize) {
 
 export function globeImagery(material, drawAtlas, redraw, maxTextureSize) {
   const imagery = document.createElement('canvas')
-  const output = document.createElement('canvas')
-  const context = output.getContext('2d')
+  const context = imagery.getContext('2d')
   const satelliteMap = { value: null }
   const bounds = { value: new Vector4() }
   const visible = { value: false }
@@ -63,15 +62,6 @@ export function globeImagery(material, drawAtlas, redraw, maxTextureSize) {
   let outline = null
   let missed = false
   let drawOutline
-
-  function paint() {
-    context.clearRect(0, 0, output.width, output.height)
-    context.drawImage(imagery, 0, 0)
-    context.globalCompositeOperation = 'source-atop'
-    drawOutline(context, outline, missed)
-    context.globalCompositeOperation = 'source-over'
-    satelliteMap.value.needsUpdate = true
-  }
 
   async function load(plan, signal) {
     const canvas = document.createElement('canvas')
@@ -115,28 +105,28 @@ export function globeImagery(material, drawAtlas, redraw, maxTextureSize) {
     await Promise.all(Array.from({ length: 6 }, worker))
     if (signal.aborted || !loaded) return
 
-    if (!satelliteMap.value || output.width !== canvas.width || output.height !== canvas.height) {
+    if (!satelliteMap.value || imagery.width !== canvas.width || imagery.height !== canvas.height) {
       satelliteMap.value?.dispose()
-      output.width = imagery.width = canvas.width
-      output.height = imagery.height = canvas.height
-      const texture = new CanvasTexture(output)
+      imagery.width = canvas.width
+      imagery.height = canvas.height
+      const texture = new CanvasTexture(imagery)
       texture.colorSpace = SRGBColorSpace
       texture.flipY = false
       texture.generateMipmaps = false
       texture.minFilter = LinearFilter
       satelliteMap.value = texture
     }
-    const base = imagery.getContext('2d')
-    base.globalCompositeOperation = 'source-over'
-    base.clearRect(0, 0, imagery.width, imagery.height)
-    base.drawImage(canvas, 0, 0)
-    base.globalCompositeOperation = 'source-atop'
-    drawOutline = drawAtlas(base, plan)
+    context.globalCompositeOperation = 'source-over'
+    context.clearRect(0, 0, imagery.width, imagery.height)
+    context.drawImage(canvas, 0, 0)
+    context.globalCompositeOperation = 'source-atop'
+    drawOutline = drawAtlas(context, plan, satelliteMap.value)
+    satelliteMap.value.needsUpdate = true
     bounds.value.set((plan.left + plan.width / 2) / plan.columns, (plan.top + plan.height / 2) / plan.rows,
       plan.width / plan.columns, plan.height / plan.rows)
     shown = plan.key
     visible.value = true
-    paint()
+    drawOutline(outline, missed)
     redraw()
   }
 
@@ -150,7 +140,7 @@ export function globeImagery(material, drawAtlas, redraw, maxTextureSize) {
       request?.abort()
       const wasVisible = visible.value
       visible.value = Boolean(plan && shown)
-      if (!wasVisible && visible.value) paint()
+      if (!wasVisible && visible.value) drawOutline(outline, missed)
       if (!plan || key === shown) return
       const controller = new AbortController()
       request = controller
@@ -159,7 +149,7 @@ export function globeImagery(material, drawAtlas, redraw, maxTextureSize) {
     outline(geometry, isMissed) {
       outline = geometry
       missed = isMissed
-      if (visible.value) paint()
+      if (visible.value) drawOutline(outline, missed)
     },
     dispose() {
       clearTimeout(timer)

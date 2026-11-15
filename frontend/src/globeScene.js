@@ -130,9 +130,23 @@ function focusPoint({ type, coordinates }) {
   return largest
 }
 
-function paintAtlas(context, atlas, political, pathFor) {
+function objectPath(shape, project, offsets) {
+  let west = Infinity, north = Infinity, east = -Infinity, south = -Infinity
+  const path = mapPath(shape, (longitude, latitude) => {
+    const [x, y] = project(longitude, latitude)
+    west = Math.min(west, x)
+    north = Math.min(north, y)
+    east = Math.max(east, x)
+    south = Math.max(south, y)
+    return [x, y]
+  }, offsets)
+  return { path, west, north, east, south }
+}
+
+function paintAtlas(context, atlas, political, project, offsets) {
+  const pathFor = (shape) => mapPath(shape, project, offsets)
   const objects = mappedObjects(atlas.list.objects, political)
-    .map((object) => ({ object, path: pathFor(object.geometry) }))
+    .map((object) => ({ object, ...objectPath(object.geometry, project, offsets) }))
   for (const { geometry, properties } of atlas.lines?.features ?? []) {
     if (!geometry) continue
     const boundary = properties?.kind === 'boundary' || political
@@ -171,21 +185,63 @@ function strokeOutline(context, path, missed) {
   context.stroke(path)
 }
 
+function textureOutline(renderer, texture, objects, project, offsets) {
+  const base = texture.image
+  const paths = new Map(objects.map((item) => [item.object.geometry, item]))
+  const patch = makeCanvas(1, 1)
+  const source = new CanvasTexture(patch.canvas)
+  const position = new Vector2()
+  let previous
+
+  function copy({ left, top, right, bottom }, path, missed) {
+    // Resizing clears the patch, including pixels where satellite tiles are missing.
+    const width = patch.canvas.width = right - left
+    const height = patch.canvas.height = bottom - top
+    patch.drawImage(base, left, top, width, height, 0, 0, width, height)
+    if (path) {
+      patch.translate(-left, -top)
+      patch.globalCompositeOperation = 'source-atop'
+      strokeOutline(patch, path, missed)
+    }
+    renderer.copyTextureToTexture(source, texture, null, position.set(left, texture.flipY ? base.height - bottom : top))
+  }
+
+  return (shape, missed) => {
+    let next
+    if (shape) {
+      const { path, west, north, east, south } = paths.get(shape) ?? objectPath(shape, project, offsets)
+      const left = Math.max(0, Math.floor(west) - 4), top = Math.max(0, Math.floor(north) - 4)
+      const right = Math.min(base.width, Math.ceil(east) + 4), bottom = Math.min(base.height, Math.ceil(south) + 4)
+      if (left < right && top < bottom) next = { left, top, right, bottom, path }
+    }
+    if (previous) {
+      const autoUpdate = texture.mipmapsAutoUpdate
+      // Generate mipmaps after the last patch for this frame.
+      texture.mipmapsAutoUpdate = autoUpdate && !next
+      try {
+        copy(previous)
+      } finally {
+        texture.mipmapsAutoUpdate = autoUpdate
+      }
+    }
+    if (next) copy(next, next.path, missed)
+    previous = next
+  }
+}
+
 export function createGlobe(container, pinElement, atlas, political, grid, overview) {
   const renderer = new WebGLRenderer({ antialias: true, alpha: true })
   const width = Math.min(4096, renderer.capabilities.maxTextureSize)
   const base = makeCanvas(width, width / 2)
   if (political) paintTerrain(base, overview, grid)
   else base.drawImage(overview, 0, 0, width, width / 2)
-  const pathFor = (geometry) => mapPath(geometry, (lon, lat) => [(lon + 180) * width / 360, (90 - lat) * width / 360])
-  const objects = paintAtlas(base, atlas, political, pathFor)
-  const paths = new Map(objects.map(({ object, path }) => [object.id, path]))
+  const project = (lon, lat) => [(lon + 180) * width / 360, (90 - lat) * width / 360]
+  const objects = paintAtlas(base, atlas, political, project)
   const catalog = new Map(atlas.list.objects.map((object) => [object.id, object]))
-  const paint = makeCanvas(width, width / 2)
-  paint.drawImage(base.canvas, 0, 0)
-  const texture = new CanvasTexture(paint.canvas)
+  const texture = new CanvasTexture(base.canvas)
   texture.colorSpace = SRGBColorSpace
   texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 8)
+  const drawOutline = textureOutline(renderer, texture, objects, project)
 
   const scene = new Scene()
   const geometry = makeTerrain(grid)
@@ -213,19 +269,17 @@ export function createGlobe(container, pinElement, atlas, political, grid, overv
   let pin = null
   let outlined = null
   let missedOutline = false
-  const imagery = political ? null : globeImagery(material, (context, plan) => {
+  const imagery = political ? null : globeImagery(material, (context, plan, satellite) => {
     const { width: mosaicWidth, height: mosaicHeight } = context.canvas
     const offsets = [0]
     if (plan.left < 0) offsets.push(-360)
     if (plan.left + plan.width > plan.columns) offsets.push(360)
-    const localPath = (shape) => mapPath(shape, (lon, lat) => [
+    const projectLocal = (lon, lat) => [
       ((lon + 180) * plan.columns / 360 - plan.left) * mosaicWidth / plan.width,
       ((90 - lat) * plan.rows / 180 - plan.top) * mosaicHeight / plan.height,
-    ], offsets)
-    paintAtlas(context, atlas, political, localPath)
-    return (target, shape, missed) => {
-      if (shape) strokeOutline(target, localPath(shape), missed)
-    }
+    ]
+    const localObjects = paintAtlas(context, atlas, political, projectLocal, offsets)
+    return textureOutline(renderer, satellite, localObjects, projectLocal, offsets)
   }, render, width)
 
   function hitAt(x, y) {
@@ -311,18 +365,19 @@ export function createGlobe(container, pinElement, atlas, political, grid, overv
       const { x: u, y: v } = hit.uv
       const longitude = Math.max(-180, Math.min(180, u * 360 - 180))
       const latitude = Math.max(-90, Math.min(90, v * 180 - 90))
-      const match = objects.find(({ path }) => paint.isPointInPath(path, u * width, (1 - v) * width / 2, 'evenodd'))
+      const xOnMap = u * width, yOnMap = (1 - v) * width / 2
+      const match = objects.find(({ path, west, north, east, south }) =>
+        xOnMap >= west && xOnMap <= east && yOnMap >= north && yOnMap <= south &&
+        base.isPointInPath(path, xOnMap, yOnMap, 'evenodd'))
       return { longitude, latitude, object: match?.object }
     },
     outline(id, missed) {
       if (id === outlined && missed === missedOutline) return
       outlined = id
       missedOutline = missed
-      paint.drawImage(base.canvas, 0, 0)
       const object = catalog.get(id)
-      if (object) strokeOutline(paint, paths.get(id) ?? pathFor(object.geometry), missed)
+      drawOutline(object?.geometry, missed)
       imagery?.outline(object?.geometry, missed)
-      texture.needsUpdate = true
       render()
     },
     mark(marker, missed) {
