@@ -30,8 +30,8 @@ export default function GlobeView({ atlas, political, taskNumber, highlight, mar
   useEffect(() => {
     const container = element.current
     const controller = new AbortController()
-    const relief = new Image()
-    relief.src = atlas.list.map.relief ?? '/physical-relief.webp'
+    const overview = new Image()
+    overview.src = '/globe-satellite.jpg'
     setStatus('loading')
     setHovered(null)
 
@@ -96,9 +96,9 @@ export default function GlobeView({ atlas, political, taskNumber, highlight, mar
       pointercancel: cancel, lostpointercapture: cancel, keydown: keyDown, wheel: clear, webglcontextlost: contextLost,
     }
 
-    Promise.all([loadElevation(controller.signal), relief.decode()]).then(([grid]) => {
+    Promise.all([loadElevation(controller.signal), overview.decode()]).then(([grid]) => {
       if (controller.signal.aborted) return
-      globe.current = createGlobe(container, pin.current, atlas, political, grid, relief)
+      globe.current = createGlobe(container, pin.current, atlas, political, grid, overview)
       for (const [type, listener] of Object.entries(events)) container.addEventListener(type, listener, true)
       setStatus('ready')
     }).catch((error) => {

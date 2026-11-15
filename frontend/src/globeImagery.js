@@ -38,7 +38,8 @@ export function globeImagery(material, drawAtlas, redraw, maxTextureSize) {
       uniform vec4 satelliteBounds;
       uniform bool satelliteVisible;
       ${shader.fragmentShader}
-    `.replace('#include <opaque_fragment>', `
+    `.replace('#include <map_fragment>', `
+      #include <map_fragment>
       if (satelliteVisible) {
         // Wrap the longitude around the center of the tile mosaic.
         vec2 offset = vec2(fract(vMapUv.x - satelliteBounds.x + 0.5) - 0.5,
@@ -48,10 +49,9 @@ export function globeImagery(material, drawAtlas, redraw, maxTextureSize) {
         float blend = smoothstep(0.0, 0.014, min(edge.x, edge.y));
         if (blend > 0.0) {
           vec4 satellite = texture2D(satelliteMap, imageUv);
-          outgoingLight = mix(outgoingLight, satellite.rgb, satellite.a * blend);
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuse * satellite.rgb, satellite.a * blend);
         }
       }
-      #include <opaque_fragment>
     `)
   }
 

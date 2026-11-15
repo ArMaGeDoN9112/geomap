@@ -18,9 +18,11 @@ test('fetches more detailed satellite tiles on zoom and redraws the selected reg
     await held
     await route.fulfill({ contentType: 'image/png', body: Buffer.from(tile, 'base64'), headers: { 'access-control-allow-origin': '*' } })
   })
+  const overview = page.waitForResponse((response) => response.url().endsWith('/globe-satellite.jpg'))
   await page.getByRole('button', { name: '3D', exact: true }).click()
   const globe = page.getByRole('region', { name: 'Интерактивный глобус' })
   await expect(globe.locator('canvas')).toBeVisible({ timeout: 15_000 })
+  expect((await overview).ok()).toBe(true)
   expect(levels.size).toBe(0)
   const zoom = page.getByRole('button', { name: 'Приблизить' })
   for (let click = 0; click < 4; click++) await zoom.click()
