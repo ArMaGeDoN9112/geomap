@@ -35,19 +35,18 @@ def included_continents(category: str):
     return ("europe", "asia") if category == "eurasia" else (category,)
 
 
+def water_continent(obj):
+    return obj.get("continent") or ("asia" if obj["id"] in ASIAN_RUSSIAN_WATERS else "europe")
+
+
 def physical_objects(russian_objects, category: PhysicalCategory):
     if category == "russia":
         return list(russian_objects)
 
     continents = included_continents(category)
     return [
-        obj for obj in russian_objects
-        if category == "world" or (
-            "asia" if obj["id"] in ASIAN_RUSSIAN_WATERS else "europe"
-        ) in continents
-    ] + [
-        obj for obj in WORLD_WATERS.values()
-        if category == "world" or obj["continent"] in continents
+        obj for obj in [*russian_objects, *WORLD_WATERS.values()]
+        if category == "world" or water_continent(obj) in continents
     ]
 
 

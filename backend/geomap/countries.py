@@ -4,8 +4,9 @@ from pathlib import Path
 from .regions import included_continents
 
 DATA = Path(__file__).parent / "data"
+PROFILES = json.loads((DATA / "country-profiles.json").read_text(encoding="utf-8"))
 COUNTRIES = {
-    country["id"]: country
+    country["id"]: {**country, "profile": PROFILES[country["id"]]}
     for country in json.loads((DATA / "countries.json").read_text(encoding="utf-8"))
 }
 COUNTRIES_BY_CONTINENT = json.loads((DATA / "country-continents.json").read_text(encoding="utf-8"))

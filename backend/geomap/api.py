@@ -111,6 +111,7 @@ class GeographicObject(BaseModel):
     id: str
     name: str
     kind: Literal["lake", "river"]
+    region: str
     geometry: dict
 
 
@@ -149,12 +150,20 @@ class ObjectList(Catalog):
     objects: list[GeographicObject]
 
 
+class CountryProfile(BaseModel):
+    region: str
+    flag: tuple[int, int] | None = None
+    population: int | None = None
+    population_year: int | None = None
+
+
 class Country(BaseModel):
     id: str
     name: str
     capitals: list[str]
     color: int
     geometry: dict
+    profile: CountryProfile
 
 
 class CountryList(Catalog):
@@ -253,7 +262,7 @@ def object_list(category: regions.PhysicalCategory = "russia"):
                 },
             ],
         },
-        "objects": objects,
+        "objects": [{**obj, "region": regions.REGIONS[regions.water_continent(obj)][0]} for obj in objects],
     }
 
 
@@ -278,6 +287,7 @@ def country_list(category: regions.WorldCategory = "world"):
             "reference_lines": "/world-boundaries.geojson" if category != "world" else None,
             "attributions": [
                 {"text": "Made with Natural Earth", "url": "https://www.naturalearthdata.com/"},
+                {"text": "Флаги: Flagpedia", "url": "https://flagpedia.net/"},
             ],
         },
         "objects": objects,

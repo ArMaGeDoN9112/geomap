@@ -16,6 +16,10 @@
 
 `country-continents.json` группирует страны и территории по полю `CONTINENT` того же слоя Natural Earth. Для океанических территорий используется регион `REGION_UN`. Россия и Турция включены в Европу и Азию.
 
+`country-profiles.json` связывает объекты по `ADM0_A3` с краткой справкой из того же выпуска Natural Earth. Регион переведён на русский по полю `SUBREGION` с уточнениями для трансконтинентальных и океанических территорий. Население взято из `POP_EST`, год оценки — из `POP_YEAR`. [Слой Natural Earth](https://github.com/nvkelso/natural-earth-vector/blob/v5.1.2/geojson/ne_50m_admin_0_countries.geojson)
+
+Координаты `flag` задают столбец и строку флага в `frontend/public/country-flags.webp`. В изображении 16 столбцов, размер ячейки — 80 × 60 пикселей. Флаги сопоставлены по `ISO_A2_EH` с пакетом PNG шириной 80 пикселей от Flagpedia. Изображения сохранены с исходными пропорциями. [Флаги Flagpedia](https://flagpedia.net/download/icons)
+
 `world-water-objects.json` содержит подборку озёр и водохранилищ Natural Earth 5.1.2 (1:50 млн). Обзорные слои суши и границ мира в `frontend/public/` упрощены до 0,014°. [Исходные векторы Natural Earth](https://github.com/nvkelso/natural-earth-vector/tree/v5.1.2/geojson)
 
 Пять антарктических озёр взяты из High resolution Antarctic lakes dataset (7.3), Gerrish, L., Fretwell, P., & Cooper, P. (2020), UK Polar Data Centre. Контуры переведены из EPSG:3031 в WGS84 и упрощены с допуском 12 м. © Scientific Committee on Antarctic Research, CC BY 4.0. [Набор данных](https://doi.org/10.5285/6a27ab9e-1258-49b1-bd2c-fcbed310ab45) · [Лицензия](https://creativecommons.org/licenses/by/4.0/)

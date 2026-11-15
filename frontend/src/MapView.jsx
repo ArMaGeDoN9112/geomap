@@ -11,9 +11,42 @@ const countryColors = [
 ]
 const outlineStyle = { color: '#125b50', weight: 3, fillColor: '#91d5ae', fillOpacity: 0.6, smoothFactor: 0, interactive: false }
 const missedStyle = { ...outlineStyle, color: '#af4a23', fillColor: '#ef9e67', fillOpacity: 0.72 }
+const formatPopulation = new Intl.NumberFormat('ru-RU', { notation: 'compact', maximumFractionDigits: 1 })
 
 function objectAt(element) {
   return element?.closest?.('[data-object-id]')?.dataset.objectId
+}
+
+function ObjectTooltip({ object }) {
+  const { profile, capitals, name } = object
+  return (
+    <div id="map-tooltip" className="map-tooltip" role="tooltip">
+      <div className="map-tooltip-heading">
+        {profile?.flag && (
+          <span
+            className="map-tooltip-flag"
+            role="img"
+            aria-label={`Флаг · ${name}`}
+            style={{ '--flag-column': profile.flag[0], '--flag-row': profile.flag[1] }}
+          />
+        )}
+        <div>
+          <strong>{name}</strong>
+          {!!capitals?.length && <p>{capitals.length === 1 ? 'Столица' : 'Столицы'} · {capitals.join(', ')}</p>}
+        </div>
+      </div>
+      {profile ? (
+        <div className="map-tooltip-facts">
+          <p>{profile.region}</p>
+          {profile.population > 0 && (
+            <p>Население · {formatPopulation.format(profile.population)} чел. ({profile.population_year})</p>
+          )}
+        </div>
+      ) : object.region && (
+        <p>{object.kind === 'river' ? 'Река' : 'Водоём'} · {object.region}</p>
+      )}
+    </div>
+  )
 }
 
 export function MapView({ atlas, political, taskNumber, highlight, marker, feedback, onSelect }) {
@@ -21,25 +54,13 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
   const mapState = useRef(null)
   const hovered = useRef(null)
   const [tilesMissing, setTilesMissing] = useState(false)
+  const [inspected, setInspected] = useState(null)
   const { map: config, objects } = atlas.list
   const russia = atlas.category === 'russia'
   const training = taskNumber !== undefined
 
-  const inspect = useEffectEvent((hit, position) => {
-    const { map, tooltip, catalog } = mapState.current
-    if (!training && hit) {
-      const object = catalog.get(hit)
-      const label = document.createElement('div')
-      label.textContent = object.name
-      if (object.capitals?.length) {
-        const capitals = document.createElement('small')
-        capitals.textContent = `${object.capitals.length === 1 ? 'Столица' : 'Столицы'} · ${object.capitals.join(', ')}`
-        label.append(capitals)
-      }
-      tooltip.setContent(label).setLatLng(position).openOn(map)
-    } else {
-      tooltip.remove()
-    }
+  const inspect = useEffectEvent((hit) => {
+    if (!training) setInspected(mapState.current.catalog.get(hit) ?? null)
   })
 
   const paintOutline = useEffectEvent(() => {
@@ -61,7 +82,7 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
       const { lat, lng } = russia ? position.wrap() : position
       onSelect({ latitude: lat, longitude: lng, displayLongitude: position.lng, objectId: hit, needsConfirmation: confirm })
     } else {
-      inspect(hit, position)
+      inspect(hit)
     }
   })
 
@@ -133,8 +154,7 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
     const pin = L.circleMarker([0, 0], {
       radius: 7, color: '#fff', weight: 3, fillColor: '#17463c', fillOpacity: 1, interactive: false,
     })
-    const tooltip = L.tooltip({ direction: 'top', offset: [0, -10] })
-    mapState.current = { map, reset, catalog, outline, pin, tooltip }
+    mapState.current = { map, reset, catalog, outline, pin }
     L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map)
 
     let pointerType = ''
@@ -172,7 +192,7 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
     }
     const clearHover = () => {
       hovered.current = null
-      tooltip.remove()
+      setInspected(null)
       paintOutline()
     }
     const pointerMove = (event) => {
@@ -180,10 +200,14 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
       const hit = objectAt(event.target)
       if (hit === hovered.current) return
       hovered.current = hit
-      inspect(hit, map.mouseEventToLatLng(event))
+      inspect(hit)
       paintOutline()
     }
     const keyDown = (event) => {
+      if (event.key === 'Escape') {
+        setInspected(null)
+        return
+      }
       if (event.key !== 'Enter' || event.target !== container) return
       event.preventDefault()
       const { left, top, width, height } = container.getBoundingClientRect()
@@ -196,7 +220,7 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
     container.addEventListener('touchstart', touchStart, { passive: true })
     container.addEventListener('touchend', touchEnd, { passive: true })
     container.addEventListener('touchcancel', touchEnd, { passive: true })
-    container.addEventListener('keydown', keyDown)
+    document.addEventListener('keydown', keyDown)
     map.on('click', click).on('movestart', clearHover)
 
     const observer = new ResizeObserver(() => map.invalidateSize({ pan: false, animate: false }))
@@ -209,7 +233,7 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
       container.removeEventListener('touchstart', touchStart)
       container.removeEventListener('touchend', touchEnd)
       container.removeEventListener('touchcancel', touchEnd)
-      container.removeEventListener('keydown', keyDown)
+      document.removeEventListener('keydown', keyDown)
       map.off('movestart', clearHover)
       map.remove()
       mapState.current = null
@@ -217,7 +241,7 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
   }, [atlas, config, objects, political, russia])
 
   useEffect(() => {
-    mapState.current.tooltip.remove()
+    setInspected(null)
     hovered.current = null
     if (taskNumber !== 1) mapState.current.reset()
     paintOutline()
@@ -253,9 +277,12 @@ export function MapView({ atlas, political, taskNumber, highlight, marker, feedb
           className={`map-canvas${political ? ' political-map' : ''}`}
           ref={element}
           aria-label={russia ? 'Интерактивная карта России' : 'Интерактивная карта мира'}
-          aria-describedby="keyboard-guide"
+          aria-describedby={!training && inspected ? 'keyboard-guide map-tooltip' : 'keyboard-guide'}
         />
         <span id="keyboard-guide" className="sr-only">Стрелки перемещают карту. Enter выбирает точку в центре карты.</span>
+        <div className="map-tooltip-placement" aria-live="polite">
+          {!training && inspected && <ObjectTooltip object={inspected} />}
+        </div>
         <div className="map-north" aria-hidden="true"><span>С</span><span>▲</span></div>
         <div className="map-crosshair" aria-hidden="true"><Crosshair size={27} /></div>
         <div className="map-controls" aria-label="Управление картой">

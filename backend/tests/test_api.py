@@ -50,6 +50,7 @@ def test_catalog_provides_water_areas_and_reference_layers(client, catalog):
     assert catalog["id"] == "russia"
     assert len(catalog["objects"]) == 11
     assert {obj["kind"] for obj in catalog["objects"]} == {"lake", "river"}
+    assert {obj["region"] for obj in catalog["objects"]} == {"Европа", "Азия"}
     assert all(shape(obj["geometry"]).is_valid for obj in catalog["objects"])
 
     response = client.get(catalog["map"]["reference_lines"])
@@ -70,6 +71,12 @@ def test_world_catalog_serves_country_borders_and_capitals_without_database():
     objects = {obj["id"]: obj for obj in catalog["objects"]}
     assert len(objects) > 190
     assert objects["country:rus"]["capitals"] == ["Москва"]
+    brazil = objects["country:bra"]["profile"]
+    assert brazil["region"] == "Южная Америка"
+    assert brazil["population"] > 200_000_000 and brazil["population_year"] == 2019
+    assert len(brazil["flag"]) == 2
+    assert objects["country:ata"]["profile"]["flag"] is None
+    assert all(obj["profile"]["region"] for obj in objects.values())
     assert all(shape(obj["geometry"]).is_valid for obj in objects.values())
 
 
