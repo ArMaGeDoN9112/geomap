@@ -1,11 +1,10 @@
-export const listPath = '/russia'
-export const listEndpoint = '/api/lists/russia'
 const unavailable = 'Сервис временно недоступен. Попробуй ещё раз.'
 
-export async function request(path, { method = 'GET', body, signal } = {}) {
+export async function request(path, { method = 'GET', body, signal, keepalive } = {}) {
   const response = await fetch(path, {
     method,
     signal,
+    keepalive,
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   }).catch(() => { throw new Error(unavailable) })

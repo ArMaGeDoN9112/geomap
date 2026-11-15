@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Compass, Crosshair,
+  ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Compass, Crosshair, Globe2,
   Link2, MapPin, MousePointer2, RotateCcw, Target, Waves, X,
 } from 'lucide-react'
 import { MapView } from './MapView'
-import { listEndpoint, listPath, request } from './api'
+import { request } from './api'
+
+const political = /^\/world\/?$/.test(window.location.pathname)
+const listPath = political ? '/world' : '/russia'
+const listEndpoint = `/api/lists${listPath}`
+const mapTitle = political ? 'Политическая карта мира' : 'Физическая карта России'
+const listTitle = political ? 'Страны мира' : 'Водоёмы России'
+const ObjectIcon = political ? Globe2 : Waves
 
 export function App() {
   const [atlas, setAtlas] = useState(null)
@@ -16,20 +23,27 @@ export function App() {
   const [selection, setSelection] = useState(null)
   const [highlight, setHighlight] = useState(false)
   const [modal, setModal] = useState(null)
+  const [exitPath, setExitPath] = useState(null)
   const [name, setName] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const inFlight = useRef(false)
+  const leaving = useRef(false)
   const heading = useRef(null)
   const training = run !== null
   const task = run?.task
   const shareUrl = new URL(listPath, window.location.origin).href
 
   useEffect(() => {
+    document.title = `GeoMap — ${listTitle}`
     const controller = new AbortController()
     request(listEndpoint, { signal: controller.signal })
       .then(async (list) => {
+        if (political) {
+          setAtlas({ list })
+          return
+        }
         const [lines, land] = await Promise.all([
           request(list.map.reference_lines, { signal: controller.signal }),
           request('/natural-earth-land.geojson', { signal: controller.signal }),
@@ -44,7 +58,9 @@ export function App() {
 
   useEffect(() => {
     if (!training) return
-    const warn = (event) => event.preventDefault()
+    const warn = (event) => {
+      if (!leaving.current) event.preventDefault()
+    }
     window.addEventListener('beforeunload', warn)
     return () => window.removeEventListener('beforeunload', warn)
   }, [training])
@@ -82,6 +98,7 @@ export function App() {
   function begin(event) {
     event.preventDefault()
     perform(async () => {
+      leaving.current = false
       setRun(await request(`${listEndpoint}/training`, {
         method: 'POST',
         body: { name: name.trim() || null },
@@ -118,8 +135,9 @@ export function App() {
     })
   }
 
-  function openModal(kind) {
+  function openModal(kind, destination = null) {
     setError('')
+    setExitPath(destination)
     setModal(kind)
   }
 
@@ -134,11 +152,22 @@ export function App() {
 
   function discard() {
     // The server expires abandoned runs if it cannot receive this request.
-    request(`/api/training/${run.id}`, { method: 'DELETE' }).catch(() => {})
+    request(`/api/training/${run.id}`, { method: 'DELETE', keepalive: true }).catch(() => {})
     setRun(null)
     setModal(null)
     setName('')
     clearAnswer()
+    if (exitPath) {
+      leaving.current = true
+      window.location.assign(exitPath)
+    }
+  }
+
+  function switchMap(event) {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    const path = event.currentTarget.pathname
+    if (pending || path === listPath || training) event.preventDefault()
+    if (!pending && training && path !== listPath) openModal('exit', path)
   }
 
   async function share() {
@@ -175,6 +204,14 @@ export function App() {
       </header>
 
       <main>
+        <nav className="map-switcher" aria-label="Выбор карты">
+          <a href="/russia" aria-current={!political ? 'page' : undefined} onClick={switchMap}>
+            <Waves size={16} aria-hidden="true" /> Физическая
+          </a>
+          <a href="/world" aria-current={political ? 'page' : undefined} onClick={switchMap}>
+            <Globe2 size={16} aria-hidden="true" /> Политическая
+          </a>
+        </nav>
         {result ? (
           <section className="result-card">
             <div className="panel-icon"><Target size={23} /></div>
@@ -185,7 +222,7 @@ export function App() {
             {result.missed.length ? (
               <div className="missed-list">
                 <h2>Стоит повторить</h2>
-                <ul>{result.missed.map((object) => <li key={object.id}><Waves size={16} />{object.name}</li>)}</ul>
+                <ul>{result.missed.map((object) => <li key={object.id}><ObjectIcon size={16} />{object.name}</li>)}</ul>
               </div>
             ) : <p className="perfect">Все объекты найдены верно.</p>}
             <div className="result-actions">
@@ -196,8 +233,8 @@ export function App() {
         ) : (
           <>
             <div className="page-intro">
-              <div className="eyebrow"><Compass size={16} /> Физическая карта России</div>
-              <h1>{atlas?.list.title ?? 'Водоёмы России'}</h1>
+              <div className="eyebrow"><Compass size={16} /> {mapTitle}</div>
+              <h1>{atlas?.list.title ?? listTitle}</h1>
             </div>
             {atlas ? (
               <div className="workspace">
@@ -249,15 +286,25 @@ export function App() {
                     <>
                       <div className="panel-icon"><BookOpen size={24} /></div>
                       <h2>Изучение</h2>
-                      <p className="desktop-hint">Наведи указатель на водоём, чтобы узнать его название.</p>
-                      <p className="touch-hint">Коснись водоёма, чтобы узнать его название.</p>
-                      <p className="hybrid-hint">Наведи указатель на водоём или коснись его, чтобы узнать название.</p>
+                      {political ? (
+                        <>
+                          <p className="desktop-hint">Наведи указатель на страну, чтобы узнать её название и столицу.</p>
+                          <p className="touch-hint">Коснись страны, чтобы узнать её название и столицу.</p>
+                          <p className="hybrid-hint">Наведи указатель на страну или коснись её, чтобы узнать название и столицу.</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="desktop-hint">Наведи указатель на водоём, чтобы узнать его название.</p>
+                          <p className="touch-hint">Коснись водоёма, чтобы узнать его название.</p>
+                          <p className="hybrid-hint">Наведи указатель на водоём или коснись его, чтобы узнать название.</p>
+                        </>
+                      )}
                       <div className="map-tip">
                         <MousePointer2 size={20} />
-                        <p>Приближай и перемещай карту, чтобы рассмотреть небольшие водоёмы.</p>
+                        <p>Приближай и перемещай карту, чтобы рассмотреть {political ? 'небольшие страны' : 'небольшие водоёмы'}.</p>
                       </div>
                       <div className="activity-actions">
-                        <div className="object-count"><Waves size={17} /> Объектов в списке <strong>{atlas.list.objects.length}</strong></div>
+                        <div className="object-count"><ObjectIcon size={17} /> {political ? 'Стран в тренировке' : 'Объектов в списке'} <strong>{atlas.list.training_count ?? atlas.list.objects.length}</strong></div>
                         <button className="primary" onClick={() => openModal('start')}>
                           Начать тренировку <ArrowRight size={18} />
                         </button>
@@ -267,6 +314,7 @@ export function App() {
                 </aside>
                 <MapView
                   atlas={atlas}
+                  political={political}
                   taskNumber={task?.number}
                   highlight={highlight && !feedback}
                   marker={feedback ?? selection}
@@ -282,7 +330,7 @@ export function App() {
               <section className="loading" aria-live="polite">
                 {loadFailed ? (
                   <>
-                    <p>Не удалось загрузить физическую карту.</p>
+                    <p>Не удалось загрузить {political ? 'политическую' : 'физическую'} карту.</p>
                     <button className="secondary" onClick={() => { setLoadFailed(false); setLoadAttempt(loadAttempt + 1) }}>
                       <RotateCcw size={17} /> Повторить
                     </button>
@@ -298,7 +346,7 @@ export function App() {
         <Dialog title={modal === 'start' ? 'Начать тренировку' : modal === 'exit' ? 'Выйти из тренировки?' : 'Ссылка на список'} onClose={() => setModal(null)} pending={pending}>
           {modal === 'start' && (
             <form onSubmit={begin}>
-              <p>На каждый объект из списка будет одно задание в случайном порядке.</p>
+              <p>{political ? `Найди на карте ${atlas.list.training_count} стран в случайном порядке.` : 'На каждый объект из списка будет одно задание в случайном порядке.'}</p>
               <label className="input-label" htmlFor="student">Имя <span>по желанию</span></label>
               <input id="student" className="field" autoComplete="off" maxLength={100} value={name} onChange={(event) => setName(event.target.value)} placeholder="Например, Анна" />
               {error && <p className="error" role="alert">{error}</p>}
@@ -309,7 +357,7 @@ export function App() {
           )}
           {modal === 'exit' && (
             <>
-              <p>При возвращении к изучению ответы в этой тренировке будут потеряны.</p>
+              <p>{exitPath ? 'При смене карты ответы в этой тренировке будут потеряны.' : 'При возвращении к изучению ответы в этой тренировке будут потеряны.'}</p>
               {error && <p className="error" role="alert">{error}</p>}
               <div className="dialog-actions">
                 <button className="secondary" onClick={discard} disabled={pending}>Выйти</button>

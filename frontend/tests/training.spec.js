@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-const mapCanvas = (page) => page.getByLabel('Интерактивная карта России')
+const mapCanvas = (page) => page.getByLabel(/^Интерактивная карта/)
 const outlines = (page, color) => mapCanvas(page).locator(`path[stroke="${color}"]`)
 
 async function openStudy(page) {
@@ -16,7 +16,7 @@ async function start(page, name = '') {
   await expect(page.getByRole('heading', { name: /^Покажи/ })).toBeVisible()
 }
 
-async function lakePoint(page, id, inset = 1) {
+async function areaPoint(page, id, inset = 1) {
   const path = mapCanvas(page).locator(`path[data-object-id="${id}"]`)
   return path.evaluate((element, inset) => {
     const area = element.getBoundingClientRect()
@@ -36,14 +36,14 @@ async function zoomToObject(page, id, inset = 1) {
   const path = map.locator(`path[data-object-id="${id}"]`)
   for (let zoom = 0; zoom < 8; zoom++) {
     const area = await path.boundingBox()
-    const point = await lakePoint(page, id, inset)
+    const point = await areaPoint(page, id, inset)
     if (point && area.width > 70) return point
-    const visible = await lakePoint(page, id, 0)
+    const visible = await areaPoint(page, id, 0)
     await page.mouse.move(visible?.x ?? area.x + area.width / 2, visible?.y ?? area.y + area.height / 2)
     await page.mouse.wheel(0, -1800)
     await expect.poll(async () => (await path.boundingBox()).width).toBeGreaterThan(area.width)
   }
-  const point = await lakePoint(page, id, inset)
+  const point = await areaPoint(page, id, inset)
   expect(point).not.toBeNull()
   return point
 }
@@ -52,7 +52,7 @@ test('desktop study, share, first answer, full results, repeat and exit', async 
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await openStudy(page)
   const map = mapCanvas(page)
-  const baikal = await lakePoint(page, 'baikal')
+  const baikal = await areaPoint(page, 'baikal')
   expect(baikal).not.toBeNull()
   await page.mouse.move(baikal.x, baikal.y)
   await expect(page.getByRole('tooltip')).toHaveText('Байкал')
@@ -63,13 +63,13 @@ test('desktop study, share, first answer, full results, repeat and exit', async 
 
   const toggle = page.getByRole('switch', { name: 'Подсветка контуров' })
   await expect(toggle).not.toBeChecked()
-  const beforeHighlight = await lakePoint(page, 'baikal')
+  const beforeHighlight = await areaPoint(page, 'baikal')
   expect(beforeHighlight).not.toBeNull()
   await page.mouse.move(beforeHighlight.x, beforeHighlight.y)
   await expect(page.getByRole('tooltip')).toHaveCount(0)
   await expect(outlines(page, '#125b50')).toHaveCount(0)
   await toggle.click()
-  const afterHighlight = await lakePoint(page, 'baikal')
+  const afterHighlight = await areaPoint(page, 'baikal')
   expect(afterHighlight).not.toBeNull()
   await page.mouse.move(afterHighlight.x, afterHighlight.y)
   await expect(outlines(page, '#125b50')).toHaveCount(1)
@@ -136,8 +136,75 @@ test('desktop study, share, first answer, full results, repeat and exit', async 
   await expect(page).toHaveURL(/\/russia$/)
 })
 
+test('political map shows capitals, grades clicks and asks before switching maps', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await openStudy(page)
+  await page.getByRole('link', { name: 'Политическая', exact: true }).click()
+  await expect(page).toHaveURL(/\/world$/)
+  await expect(page.getByRole('heading', { name: 'Страны мира' })).toBeVisible()
+  await expect(page.getByText('Стран в тренировке')).toContainText('12')
+  const brazil = await areaPoint(page, 'country:bra', 4)
+  expect(brazil).not.toBeNull()
+  await page.mouse.move(brazil.x, brazil.y)
+  const tooltip = page.getByRole('tooltip')
+  await expect(tooltip).toContainText('Бразилия')
+  await expect(tooltip).toContainText('Столица · Бразилиа')
+
+  await page.getByRole('button', { name: 'Поделиться списком' }).click()
+  await expect(page.getByRole('status')).toHaveText('Ссылка скопирована')
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/\/world$/)
+
+  await start(page)
+  const algeria = await areaPoint(page, 'country:dza', 4)
+  expect(algeria).not.toBeNull()
+  await page.mouse.move(algeria.x, algeria.y)
+  await expect(tooltip).toHaveCount(0)
+  await expect(outlines(page, '#125b50')).toHaveCount(0)
+  await page.getByRole('switch', { name: 'Подсветка контуров' }).click()
+  await page.mouse.move(algeria.x, algeria.y)
+  await expect(outlines(page, '#125b50')).toHaveCount(1)
+  await page.mouse.click(algeria.x, algeria.y)
+  await expect(page.getByText(/Расстояние до объекта · .*км/)).toBeVisible()
+  await expect(outlines(page, '#af4a23')).toHaveCount(1)
+
+  const physicalMap = page.getByRole('link', { name: 'Физическая', exact: true })
+  await physicalMap.click()
+  await page.getByRole('button', { name: 'Продолжить' }).click()
+  await expect(page.getByText('Задание 1 из 12')).toBeVisible()
+  await physicalMap.click()
+  await page.getByRole('button', { name: 'Выйти', exact: true }).click()
+  await expect(page).toHaveURL(/\/russia$/)
+  await expect(page.getByRole('heading', { name: 'Изучение' })).toBeVisible()
+})
+
 test.describe('touch screen', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 375, height: 812 }, deviceScaleFactor: 2 })
+
+  test('political map shows capitals on tap and waits for confirmation', async ({ page }) => {
+    await page.goto('/world')
+    await expect(page.getByRole('heading', { name: 'Изучение' })).toBeVisible()
+    const map = mapCanvas(page)
+    await map.scrollIntoViewIfNeeded()
+    const brazil = await areaPoint(page, 'country:bra', 4)
+    expect(brazil).not.toBeNull()
+    await page.touchscreen.tap(brazil.x, brazil.y)
+    await expect(page.getByRole('tooltip')).toContainText('Столица · Бразилиа')
+    await start(page)
+
+    const confirm = page.getByRole('button', { name: 'Подтвердить' })
+    await expect(confirm).toBeDisabled()
+    await map.scrollIntoViewIfNeeded()
+    const algeria = await areaPoint(page, 'country:dza', 3)
+    expect(algeria).not.toBeNull()
+    let submissions = 0
+    page.on('request', (request) => { if (request.url().endsWith('/answer')) submissions++ })
+    await page.touchscreen.tap(algeria.x, algeria.y)
+    await expect(confirm).toBeEnabled()
+    expect(submissions).toBe(0)
+    await confirm.tap()
+    await expect(page.getByText(/Расстояние до объекта · .*км/)).toBeVisible()
+    expect(submissions).toBe(1)
+  })
 
   test('tap shows a name, gestures do not submit, and a moved marker can hit the Neva', async ({ page, context }) => {
     await openStudy(page)
