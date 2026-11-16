@@ -1,3 +1,20 @@
-{$GEOMAP_DOMAIN} {
+{
+    default_sni {$GEOMAP_DOMAIN}
+}
+
+(proxy) {
     reverse_proxy frontend:80
+}
+
+(proxy_with_ip_certificate) {
+    import proxy
+    tls {
+        issuer acme {
+            profile shortlived
+        }
+    }
+}
+
+{$GEOMAP_DOMAIN} {
+    import {$GEOMAP_CADDY_SNIPPET:proxy}
 }

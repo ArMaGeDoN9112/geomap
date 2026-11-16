@@ -23,6 +23,7 @@ services:
         condition: service_healthy
     environment:
       GEOMAP_DOMAIN: ${GEOMAP_DOMAIN:?Set GEOMAP_DOMAIN}
+      GEOMAP_CADDY_SNIPPET: ${GEOMAP_CADDY_SNIPPET:-proxy}
     ports:
       - '80:80'
       - '443:443'

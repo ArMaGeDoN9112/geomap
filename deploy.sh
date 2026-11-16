@@ -3,8 +3,10 @@ set -euo pipefail
 
 domain=${1:-}
 hostname_pattern='^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$'
-if [[ $# != 1 || ${#domain} -gt 253 || ! $domain =~ $hostname_pattern ]]; then
-    echo 'Usage: bash deploy.sh maps.example.com' >&2
+octet='(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])'
+ipv4_pattern="^($octet\.){3}$octet\$"
+if [[ $# != 1 || ${#domain} -gt 253 || ( ! $domain =~ $hostname_pattern && ! $domain =~ $ipv4_pattern ) ]]; then
+    echo 'Usage: bash deploy.sh <public hostname or IPv4 address>' >&2
     exit 2
 fi
 
@@ -32,6 +34,10 @@ fi
 
 unset POSTGRES_PASSWORD
 export GEOMAP_DOMAIN="$domain"
+export GEOMAP_CADDY_SNIPPET=proxy
+if [[ $domain =~ $ipv4_pattern ]]; then
+    export GEOMAP_CADDY_SNIPPET=proxy_with_ip_certificate
+fi
 compose=(docker compose --project-name "$project" --env-file "$env_file" -f compose.yaml -f compose.production.yaml)
 "${compose[@]}" config --quiet
 if ! "${compose[@]}" up --build --detach --wait --wait-timeout 180; then
