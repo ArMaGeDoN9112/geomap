@@ -9,10 +9,8 @@ GeoMap helps students study geographic features and practice locating them on ph
 
 ## Build and Local Development
 
-- From the repository root, run `docker compose up --build -d --wait` with Docker running to build the API and start it with PostgreSQL.
-- From `frontend/`, use Node.js 22.12+ and run `npm ci` to install locked dependencies, `npm run dev` to start Vite, and `npm run build` to create the production bundle in `frontend/dist/`.
-
-Open `/russia` or `/world` on the Vite server. See the [README](README.md) for local configuration and API details.
+- From the repository root, run `docker compose up --build -d --wait` to start the frontend, API, and PostgreSQL.
+- Open `/russia` or `/world` on port 5173. For Vite hot reload, follow the [local development instructions](README.md#разработка-с-vite).
 
 ## Coding Style and Naming
 
@@ -21,7 +19,7 @@ Use four spaces and `snake_case` for Python functions, and two spaces, single qu
 ## Testing
 
 - Run the [documented Compose test command](README.md#проверки) from the repository root with services running. Pytest exercises FastAPI in `backend/tests/` using an isolated PostgreSQL schema for database tests.
-- From `frontend/`, install Chromium with `npx playwright install chromium`, then run `npm test` with the API running. Playwright runs the specs in `frontend/tests/` and starts Vite if needed.
+- From `frontend/`, install Chromium with `npx playwright install chromium`, then run `npm test` with the API running. Playwright reuses the frontend on port 5173 or starts Vite if the port is free.
 
 Name pytest functions `test_<behavior>` and use descriptive Playwright titles in `*.spec.js`. For grading changes, cover correct and incorrect answers, including a point on the boundary when relevant. Run the affected checks before opening a pull request.
 

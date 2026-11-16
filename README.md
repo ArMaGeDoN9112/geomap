@@ -10,7 +10,15 @@ GeoMap помогает изучать реки, озёра, горные мас
 docker compose up --build -d --wait
 ```
 
-Документация API доступна на [localhost:8000/docs](http://localhost:8000/docs), проверка базы и API — на [localhost:8000/api/health](http://localhost:8000/api/health).
+Откройте [физическую карту](http://localhost:5173/russia) или [политическую карту](http://localhost:5173/world). Nginx раздаёт сборку React и проксирует `/api` в FastAPI. Документация API доступна на [localhost:8000/docs](http://localhost:8000/docs), проверка базы и API — на [localhost:5173/api/health](http://localhost:5173/api/health).
+
+### Разработка с Vite
+
+Для горячей перезагрузки запустите API и PostgreSQL через Compose. Если контейнер фронтенда запущен, освободите порт 5173 командой `docker compose stop frontend`. Из корня проекта выполните:
+
+```sh
+docker compose up --build -d --wait api
+```
 
 Установите Node.js 22.12+ и npm. В каталоге `frontend/` выполните:
 
@@ -19,7 +27,7 @@ npm ci
 npm run dev
 ```
 
-Откройте [физическую карту](http://localhost:5173/russia) или [политическую карту](http://localhost:5173/world). Vite проксирует `/api` на локальный FastAPI. При изменении `API_PORT` в корневом `.env` перезапустите Vite.
+Vite обслуживает те же адреса и проксирует `/api` на локальный порт FastAPI. При изменении `API_PORT` в корневом `.env` перезапустите Vite. Перед запуском контейнера фронтенда завершите Vite, чтобы освободить порт 5173.
 
 Для сборки в том же каталоге выполните `npm run build`. Сервер статики должен отдавать файлы из `frontend/dist/`, обслуживать `/russia` и `/world` через `index.html` и направлять запросы к `/api` в FastAPI.
 
@@ -62,7 +70,7 @@ API при старте создаёт таблицы через SQLAlchemy Core
 
 ## Проверки
 
-Для браузерных проверок поднимите API и PostgreSQL через Compose. Затем из `frontend/` выполните:
+Для браузерных проверок запустите приложение через Compose или поднимите `api` через Compose для запуска с Vite. Затем из `frontend/` выполните:
 
 ```sh
 npx playwright install chromium
