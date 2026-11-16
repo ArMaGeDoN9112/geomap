@@ -4,7 +4,7 @@ import {
 } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { acceleratedRaycast, MeshBVH } from 'three-mesh-bvh'
-import { countryColors, mappedObjects, physicalMapColors } from './mapPresentation'
+import { countryColors, isMarine, mappedObjects, physicalMapColors, studyAreaStyles } from './mapPresentation'
 import { globeImagery } from './globeImagery'
 
 const gridWidth = 1440
@@ -143,10 +143,13 @@ function objectPath(shape, project, offsets) {
   return { path, west, north, east, south }
 }
 
-function paintAtlas(context, atlas, political, project, offsets) {
-  const pathFor = (shape) => mapPath(shape, project, offsets)
-  const objects = mappedObjects(atlas.list.objects, political)
+function atlasPaths(atlas, political, project, offsets) {
+  return mappedObjects(atlas.list, political)
     .map((object) => ({ object, ...objectPath(object.geometry, project, offsets) }))
+}
+
+function paintAtlas(context, atlas, political, project, objects, kinds, offsets) {
+  const pathFor = (shape) => mapPath(shape, project, offsets)
   for (const { geometry, properties } of atlas.lines?.features ?? []) {
     if (!geometry) continue
     const boundary = properties?.kind === 'boundary' || political
@@ -163,16 +166,30 @@ function paintAtlas(context, atlas, political, project, offsets) {
       context.strokeStyle = '#4b6764'
       context.lineWidth = 1
       context.stroke(path)
+    } else if (!kinds.includes(object.kind)) {
+      continue
     } else if (object.centerline) {
       context.strokeStyle = physicalMapColors.river
       context.lineWidth = 1.25
       context.stroke(pathFor(object.centerline))
-    } else if (object.kind === 'lake' || object.kind === 'river') {
+    } else if (studyAreaStyles[object.kind]) {
+      const style = studyAreaStyles[object.kind]
+      if (style.fill !== false) {
+        context.globalAlpha = style.fillOpacity
+        context.fillStyle = style.fillColor
+        context.fill(path, 'evenodd')
+        context.globalAlpha = 1
+      }
+      if (style.stroke !== false) {
+        context.strokeStyle = style.color
+        context.lineWidth = style.weight
+        context.stroke(path)
+      }
+    } else {
       context.fillStyle = physicalMapColors.water
       context.fill(path, 'evenodd')
     }
   }
-  return objects.reverse()
 }
 
 function strokeOutline(context, path, missed) {
@@ -229,15 +246,17 @@ function textureOutline(renderer, texture, objects, project, offsets) {
   }
 }
 
-export function createGlobe(container, pinElement, atlas, political, grid, overview) {
+export function createGlobe(container, pinElement, atlas, political, grid, overview, kinds) {
   const renderer = new WebGLRenderer({ antialias: true, alpha: true })
   const width = Math.min(4096, renderer.capabilities.maxTextureSize)
   const base = makeCanvas(width, width / 2)
   if (political) paintTerrain(base, overview, grid)
   else base.drawImage(overview, 0, 0, width, width / 2)
   const project = (lon, lat) => [(lon + 180) * width / 360, (90 - lat) * width / 360]
-  const objects = paintAtlas(base, atlas, political, project)
-  const catalog = new Map(atlas.list.objects.map((object) => [object.id, object]))
+  const objects = atlasPaths(atlas, political, project)
+  paintAtlas(base, atlas, political, project, objects, kinds)
+  const pickOrder = objects.toReversed()
+  const catalog = new Map([...atlas.list.objects, ...(atlas.list.marine ?? [])].map((object) => [object.id, object]))
   const texture = new CanvasTexture(base.canvas)
   texture.colorSpace = SRGBColorSpace
   texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 8)
@@ -278,7 +297,8 @@ export function createGlobe(container, pinElement, atlas, political, grid, overv
       ((lon + 180) * plan.columns / 360 - plan.left) * mosaicWidth / plan.width,
       ((90 - lat) * plan.rows / 180 - plan.top) * mosaicHeight / plan.height,
     ]
-    const localObjects = paintAtlas(context, atlas, political, projectLocal, offsets)
+    const localObjects = atlasPaths(atlas, political, projectLocal, offsets)
+    paintAtlas(context, atlas, political, projectLocal, localObjects, kinds, offsets)
     return textureOutline(renderer, satellite, localObjects, projectLocal, offsets)
   }, render, width)
 
@@ -359,17 +379,27 @@ export function createGlobe(container, pinElement, atlas, political, grid, overv
   reset()
 
   return {
-    pick(x = 0, y = 0) {
+    pick(x = 0, y = 0, studying) {
       const hit = hitAt(x, y)
       if (!hit) return null
       const { x: u, y: v } = hit.uv
       const longitude = Math.max(-180, Math.min(180, u * 360 - 180))
       const latitude = Math.max(-90, Math.min(90, v * 180 - 90))
       const xOnMap = u * width, yOnMap = (1 - v) * width / 2
-      const match = objects.find(({ path, west, north, east, south }) =>
-        xOnMap >= west && xOnMap <= east && yOnMap >= north && yOnMap <= south &&
+      const match = pickOrder.find(({ object, path, west, north, east, south }) =>
+        (studying || !isMarine(object)) && xOnMap >= west && xOnMap <= east && yOnMap >= north && yOnMap <= south &&
         base.isPointInPath(path, xOnMap, yOnMap, 'evenodd'))
       return { longitude, latitude, object: match?.object }
+    },
+    setHighlights(next) {
+      if (next === kinds) return
+      kinds = next
+      base.drawImage(overview, 0, 0, width, width / 2)
+      paintAtlas(base, atlas, political, project, objects, kinds)
+      texture.needsUpdate = true
+      imagery?.repaint()
+      drawOutline(catalog.get(outlined)?.geometry, missedOutline)
+      render()
     },
     outline(id, missed) {
       if (id === outlined && missed === missedOutline) return

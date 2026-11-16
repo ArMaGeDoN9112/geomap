@@ -226,14 +226,7 @@ h1 {
 .answer-map .map-canvas, .answer-map :is(.physical-area, .country-area) { cursor: crosshair; }
 .map-canvas.leaflet-dragging, .leaflet-dragging .map-canvas, .leaflet-dragging :is(.physical-area, .country-area) { cursor: grabbing; }
 .atlas-summit { pointer-events: none; white-space: nowrap; }
-.atlas-sea {
-  color: #24546e;
-  font: italic 600 11px/16px Georgia, serif;
-  letter-spacing: 0.025em;
-  text-align: center;
-  white-space: nowrap;
-}
-.satellite-map .atlas-sea { color: #e2f3fa; text-shadow: 0 1px 2px #091c2c; }
+.answer-map .marine-area { display: none; }
 .summit-symbol {
   display: inline-block;
   width: 10px;
@@ -250,7 +243,7 @@ h1 {
 }
 .answer-map .summit-elevation, .summit-label-overlaps .summit-elevation { display: none; }
 @media (max-width: 700px) {
-  .atlas-sea, .summit-elevation { display: none; }
+  .summit-elevation { display: none; }
 }
 .map-tooltip-placement {
   position: absolute;
@@ -557,6 +550,18 @@ p.error { color: #9b3528; font-size: 14px; margin-top: 9px; }
 .atlas-layout .activity .task-prompt { margin-top: 16px; }
 .atlas-layout .map-tip { margin-top: 14px; }
 .atlas-layout .activity-actions { padding-top: 16px; }
+.study-highlights {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 8px;
+  margin: 14px 0 0;
+  padding: 0 8px 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.study-highlights legend { padding: 0 5px; font-size: 13px; font-weight: 650; }
+.study-highlights label { display: flex; align-items: center; gap: 7px; min-height: 44px; cursor: pointer; font-size: 14px; }
+.study-highlights input { flex: none; width: 17px; height: 17px; margin: 0; accent-color: var(--green); }
 
 @media (any-pointer: coarse) {
   .desktop-hint { display: none; }
@@ -588,6 +593,7 @@ p.error { color: #9b3528; font-size: 14px; margin-top: 9px; }
   .atlas-layout .map-frame { min-height: max(320px, min(60dvh, 112vw)); }
   .atlas-layout .activity:not(:has(.task-status)) > :is(.desktop-hint, .touch-hint, .hybrid-hint) { display: none; }
   .atlas-layout .activity-map-tools { margin-bottom: 0; }
+  .study-highlights { grid-template-columns: repeat(auto-fit, minmax(85px, 1fr)); }
   .atlas-layout .activity-actions { padding-top: 10px; }
 }
 @media (max-width: 360px) {

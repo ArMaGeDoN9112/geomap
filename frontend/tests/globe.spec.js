@@ -97,17 +97,29 @@ test('loads detailed satellite tiles in both physical map views', async ({ page 
   await expect.poll(() => levels.size).toBe(2)
   const [lower, higher] = levels
   expect(higher).toBeGreaterThan(lower)
-  const before = await globe.screenshot()
-  release()
-  await expect.poll(async () => (await globe.screenshot()).equals(before)).toBe(false)
-  const detailed = await globe.screenshot()
   const { x, y, width, height } = await globe.boundingBox()
+  // Compare map pixels without the antialiased corners of the surrounding card.
+  const capture = () => page.screenshot({
+    clip: { x: x + 16, y: y + 16, width: width - 32, height: height - 32 },
+    style: '.map-tooltip-placement { visibility: hidden; }',
+  })
+  const before = await capture()
+  release()
+  await expect.poll(async () => (await capture()).equals(before)).toBe(false)
+  const detailed = await capture()
   await page.mouse.move(x + width / 2, y + height / 2)
   await expect(page.getByRole('tooltip')).toContainText('Тестовое озеро')
-  expect((await globe.screenshot()).equals(detailed)).toBe(false)
+  expect((await capture()).equals(detailed)).toBe(false)
   await page.mouse.move(0, 0)
   await expect(page.getByRole('tooltip')).toHaveCount(0)
-  await expect.poll(async () => (await globe.screenshot()).equals(detailed)).toBe(true)
+  await expect.poll(async () => (await capture()).equals(detailed)).toBe(true)
+
+  const lakes = page.getByRole('checkbox', { name: 'Озёра' })
+  await lakes.uncheck()
+  await expect.poll(async () => (await capture()).equals(detailed)).toBe(false)
+  await lakes.check()
+  await expect.poll(async () => (await capture()).equals(detailed)).toBe(true)
+  expect(levels.size).toBe(2)
 })
 
 test('switches to the globe, rotates it and answers with coordinates', async ({ page }) => {

@@ -4,6 +4,7 @@ import {
   Link2, MapPin, Mountain, MousePointer2, RotateCcw, Target, X,
 } from 'lucide-react'
 import { MapView } from './MapView'
+import { defaultStudyHighlights, studyKinds } from './mapPresentation'
 import { request } from './api'
 
 const political = /^\/world\/?$/.test(window.location.pathname)
@@ -24,6 +25,7 @@ export function App() {
   const [feedback, setFeedback] = useState(null)
   const [selection, setSelection] = useState(null)
   const [highlight, setHighlight] = useState(false)
+  const [studyHighlights, setStudyHighlights] = useState(defaultStudyHighlights)
   const [globe, setGlobe] = useState(false)
   const [controlsTarget, setControlsTarget] = useState(null)
   const [modal, setModal] = useState(null)
@@ -325,9 +327,20 @@ export function App() {
                         </>
                       ) : (
                         <>
-                          <p className="desktop-hint">Наведи указатель на горы, реку или озеро, чтобы узнать название.</p>
-                          <p className="touch-hint">Коснись гор, реки или озера, чтобы узнать название.</p>
+                          <p className="desktop-hint">Наведи указатель на объект, чтобы узнать название.</p>
+                          <p className="touch-hint">Коснись объекта, чтобы узнать название.</p>
                           <p className="hybrid-hint">Наведи указатель на объект или коснись его, чтобы узнать название.</p>
+                          <fieldset className="study-highlights">
+                            <legend>Подсветка на карте</legend>
+                            {Object.entries(studyKinds).map(([kind, label]) => (
+                              <label key={kind}>
+                                <input type="checkbox" checked={studyHighlights.includes(kind)}
+                                  onChange={({ target: { checked } }) => setStudyHighlights((current) =>
+                                    checked ? [...current, kind] : current.filter((item) => item !== kind))} />
+                                {label}
+                              </label>
+                            ))}
+                          </fieldset>
                         </>
                       )}
                       <div className="map-tip">
@@ -350,6 +363,7 @@ export function App() {
                   controlsTarget={controlsTarget}
                   taskNumber={task?.number}
                   highlight={highlight && !feedback}
+                  studyHighlights={studyHighlights}
                   marker={feedback ?? selection}
                   feedback={feedback}
                   onSelect={(point) => {

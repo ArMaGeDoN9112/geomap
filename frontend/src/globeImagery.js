@@ -62,6 +62,7 @@ export function globeImagery(material, drawAtlas, redraw, maxTextureSize) {
   let outline = null
   let missed = false
   let drawOutline
+  let repaint
 
   async function load(plan, signal) {
     const canvas = document.createElement('canvas')
@@ -116,21 +117,27 @@ export function globeImagery(material, drawAtlas, redraw, maxTextureSize) {
       texture.minFilter = LinearFilter
       satelliteMap.value = texture
     }
-    context.globalCompositeOperation = 'source-over'
-    context.clearRect(0, 0, imagery.width, imagery.height)
-    context.drawImage(canvas, 0, 0)
-    context.globalCompositeOperation = 'source-atop'
-    drawOutline = drawAtlas(context, plan, satelliteMap.value)
-    satelliteMap.value.needsUpdate = true
+    repaint = () => {
+      context.globalCompositeOperation = 'source-over'
+      context.clearRect(0, 0, imagery.width, imagery.height)
+      context.drawImage(canvas, 0, 0)
+      context.globalCompositeOperation = 'source-atop'
+      drawOutline = drawAtlas(context, plan, satelliteMap.value)
+      satelliteMap.value.needsUpdate = true
+      if (visible.value) drawOutline(outline, missed)
+    }
     bounds.value.set((plan.left + plan.width / 2) / plan.columns, (plan.top + plan.height / 2) / plan.rows,
       plan.width / plan.columns, plan.height / plan.rows)
     shown = plan.key
     visible.value = true
-    drawOutline(outline, missed)
+    repaint()
     redraw()
   }
 
   return {
+    repaint() {
+      repaint?.()
+    },
     update(area, width, height) {
       const plan = area && tilePlan(area, width, height, maxTextureSize)
       const key = plan?.key ?? null

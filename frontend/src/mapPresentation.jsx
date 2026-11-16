@@ -2,6 +2,17 @@ import { createPortal } from 'react-dom'
 import { Crosshair, Minus, Plus } from 'lucide-react'
 
 export const physicalMapColors = { boundary: '#fff5ddae', river: '#73bfd4', water: '#82bad266' }
+export const studyKinds = { mountain: 'Горы', river: 'Реки', lake: 'Озёра', sea: 'Моря', ocean: 'Океаны' }
+export const defaultStudyHighlights = ['river', 'lake']
+export const studyAreaStyles = {
+  mountain: { color: '#ffd88b', weight: 2, fill: false },
+  sea: { color: '#93dcf9', weight: 1.25, fillColor: '#57bbec', fillOpacity: 0.25 },
+  ocean: { stroke: false, fillColor: '#518bde', fillOpacity: 0.19 },
+}
+
+export function isMarine(object) {
+  return object.kind === 'sea' || object.kind === 'ocean'
+}
 
 export const countryColors = [
   '#e6c994', '#b9d7ae', '#edc2ab', '#b7c8e2', '#e2dca1', '#d5bfdf', '#a9d5cc',
@@ -9,11 +20,13 @@ export const countryColors = [
 ]
 const formatPopulation = new Intl.NumberFormat('ru-RU', { notation: 'compact', maximumFractionDigits: 1 })
 const formatElevation = new Intl.NumberFormat('ru-RU')
-const physicalKinds = { river: 'Река', lake: 'Озеро', mountain: 'Горный массив' }
+const physicalKinds = { river: 'Река', lake: 'Озеро', mountain: 'Горный массив', sea: 'Море', ocean: 'Океан' }
 
-export function mappedObjects(objects, political) {
+export function mappedObjects({ objects, marine = [] }, political) {
   // Water features stay selectable where rivers and lakes cross a mountain area.
   return political ? objects : [
+    ...marine.filter((object) => object.kind === 'ocean'),
+    ...marine.filter((object) => object.kind === 'sea'),
     ...objects.filter((object) => object.kind === 'mountain'),
     ...objects.filter((object) => object.kind === 'river'),
     ...objects.filter((object) => object.kind === 'lake'),
@@ -45,8 +58,8 @@ function ObjectTooltip({ object }) {
             <p>Население · {formatPopulation.format(profile.population)} чел. ({profile.population_year})</p>
           )}
         </div>
-      ) : object.region && (
-        <p>{physicalKinds[object.kind]} · {object.region}</p>
+      ) : physicalKinds[object.kind] && (
+        <p>{physicalKinds[object.kind]}{object.region && ` · ${object.region}`}</p>
       )}
       {object.summit && (
         <p>Высшая точка · {object.summit.name}, {formatElevation.format(object.summit.elevation)} м</p>

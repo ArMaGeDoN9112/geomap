@@ -1,6 +1,9 @@
 import { lazy, Suspense, useEffect, useEffectEvent, useRef, useState } from 'react'
 import L from 'leaflet'
-import { MapControls, MapInspection, countryColors, mappedObjects, physicalMapColors } from './mapPresentation'
+import {
+  MapControls, MapInspection, countryColors, defaultStudyHighlights, isMarine, mappedObjects,
+  physicalMapColors, studyAreaStyles,
+} from './mapPresentation'
 
 const waterStyle = {
   stroke: false, fillColor: physicalMapColors.water, fillOpacity: 1, smoothFactor: 0,
@@ -11,25 +14,17 @@ const physicalOutline = { ...outlineStyle, weight: 2, fill: false }
 const missedStyle = { ...outlineStyle, color: '#af4a23', fillColor: '#ef9e67', fillOpacity: 0.72 }
 const missedPhysicalOutline = { ...physicalOutline, color: missedStyle.color, weight: 3 }
 const formatElevation = new Intl.NumberFormat('ru-RU')
-const russianSeas = [
-  [74.5, 37, 'Баренцево море'],
-  [75, 73, 'Карское море'],
-  [77, 121, 'Море Лаптевых'],
-  [75, 159, 'Восточно-Сибирское море'],
-  [55.5, 146, 'Охотское море'],
-  [59, 187, 'Берингово море'],
-]
 
 function objectAt(element) {
   return element?.closest?.('[data-object-id]')?.dataset.objectId
 }
 
-function FlatMap({ atlas, political, taskNumber, highlight, marker, feedback, onSelect, controlsTarget }) {
+function FlatMap({ atlas, political, taskNumber, highlight, studyHighlights, marker, feedback, onSelect, controlsTarget }) {
   const element = useRef(null)
   const mapState = useRef(null)
   const hovered = useRef(null)
   const [inspected, setInspected] = useState(null)
-  const { map: config, objects } = atlas.list
+  const { map: config } = atlas.list
   const russia = atlas.category === 'russia'
   const training = taskNumber !== undefined
 
@@ -38,7 +33,7 @@ function FlatMap({ atlas, political, taskNumber, highlight, marker, feedback, on
   })
 
   const paintOutline = useEffectEvent(() => {
-    const { outline, catalog } = mapState.current
+    const { outline, catalog, coordsToLatLng } = mapState.current
     const missed = feedback && !feedback.correct
     const id = missed
       ? feedback.object_id
@@ -52,7 +47,11 @@ function FlatMap({ atlas, political, taskNumber, highlight, marker, feedback, on
     outline.id = id
     outline.options.style = style
     outline.clearLayers()
-    if (id) outline.addData(catalog.get(id).geometry)
+    if (id) {
+      const object = catalog.get(id)
+      outline.options.coordsToLatLng = isMarine(object) ? undefined : coordsToLatLng
+      outline.addData(object.geometry)
+    }
   })
 
   const choosePoint = useEffectEvent((hit, position, confirm) => {
@@ -119,33 +118,47 @@ function FlatMap({ atlas, political, taskNumber, highlight, marker, feedback, on
         ...[30, 60, 90, 120, 150, 180, 210].map((longitude) => L.polyline([[15, longitude], [85, longitude]])),
         ...[30, 45, 60, 75].map((latitude) => L.polyline([[latitude, -72], [latitude, 245]])),
       ].map((line) => line.setStyle({ color: '#618d8c', weight: 1, opacity: 0.2, dashArray: '2 6', interactive: false }))).addTo(map)
-      for (const [latitude, longitude, label] of russianSeas) {
-        L.marker([latitude, longitude], {
-          interactive: false, keyboard: false,
-          icon: L.divIcon({ className: 'atlas-sea', html: label, iconSize: [124, 16], iconAnchor: [62, 8] }),
-        }).addTo(map)
-      }
     }
 
     const coordsToLatLng = ([longitude, latitude]) =>
       L.latLng(latitude, russia && longitude < 0 ? longitude + 360 : longitude)
-    const catalog = new Map(objects.map((object) => [object.id, object]))
+    const catalog = new Map(atlas.list.objects.map((object) => [object.id, object]))
+    const highlightLayers = []
     const summitMarkers = []
-    for (const object of mappedObjects(objects, political)) {
+    for (const entry of mappedObjects(atlas.list, political)) {
+      const marine = isMarine(entry)
+      let object = entry
+      if (marine && russia) {
+        // Shift whole polygons so a ring at the date line never stretches across the map.
+        const { coordinates } = entry.geometry
+        object = { ...entry, geometry: { type: 'MultiPolygon', coordinates: [
+          ...coordinates,
+          ...coordinates.map((polygon) => polygon.map((ring) => ring.map(([lon, lat]) => [lon + 360, lat]))),
+        ] } }
+      }
+      catalog.set(object.id, object)
       const style = political ? {
         color: '#647b74', weight: 0.7, fillColor: countryColors[object.color - 1] ?? '#e5e7cb',
         fillOpacity: 1, smoothFactor: 0,
-      } : object.kind === 'mountain' || object.centerline ? invisibleArea : waterStyle
+      } : invisibleArea
       if (object.centerline) {
-        L.geoJSON(object.centerline, {
-          coordsToLatLng, interactive: false, style: { color: physicalMapColors.river, weight: 1.35 },
+        const line = L.geoJSON(object.centerline, {
+          coordsToLatLng, interactive: false, style: { color: physicalMapColors.river, weight: 1.35, opacity: 0 },
         }).addTo(map)
+        highlightLayers.push([object.kind, line, { opacity: 1 }, { opacity: 0 }])
       }
-      L.geoJSON(object.geometry, { style, coordsToLatLng }).eachLayer((layer) => {
+      L.geoJSON(object.geometry, { style, coordsToLatLng: marine ? undefined : coordsToLatLng }).eachLayer((layer) => {
         layer.addTo(map)
         const path = layer.getElement()
         path.dataset.objectId = object.id
         path.classList.add(political ? 'country-area' : 'physical-area')
+        if (marine) path.classList.add('marine-area')
+        if (!political && !object.centerline) {
+          const shown = studyAreaStyles[object.kind]
+            ? { ...invisibleArea, stroke: true, ...studyAreaStyles[object.kind] }
+            : waterStyle
+          highlightLayers.push([object.kind, layer, shown, invisibleArea])
+        }
       })
       if (object.summit) {
         summitMarkers.push(L.marker(coordsToLatLng(object.summit.coordinates), {
@@ -172,7 +185,7 @@ function FlatMap({ atlas, political, taskNumber, highlight, marker, feedback, on
     const pin = L.circleMarker([0, 0], {
       radius: 7, color: '#fff', weight: 3, fillColor: '#17463c', fillOpacity: 1, interactive: false,
     })
-    mapState.current = { map, reset, catalog, outline, pin }
+    mapState.current = { map, reset, catalog, outline, pin, coordsToLatLng, highlightLayers }
     L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map)
 
     let pointerType = ''
@@ -256,7 +269,14 @@ function FlatMap({ atlas, political, taskNumber, highlight, marker, feedback, on
       map.remove()
       mapState.current = null
     }
-  }, [atlas, config, objects, political, russia])
+  }, [atlas, config, political, russia])
+
+  useEffect(() => {
+    const kinds = training ? defaultStudyHighlights : studyHighlights
+    for (const [kind, layer, shown, hidden] of mapState.current.highlightLayers) {
+      layer.setStyle(kinds.includes(kind) ? shown : hidden)
+    }
+  }, [atlas, studyHighlights, training])
 
   useEffect(() => {
     setInspected(null)

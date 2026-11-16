@@ -48,6 +48,40 @@ async function zoomToObject(page, id, inset = 1) {
   return point
 }
 
+test('independently highlights physical features in study and keeps marine areas out of training', async ({ page }) => {
+  await openStudy(page)
+  const filters = page.getByRole('group', { name: 'Подсветка на карте' })
+  const path = (id) => mapCanvas(page).locator(`path[data-object-id="${id}"]`)
+  const mountain = path('mountain:caucasus')
+  const lake = path('baikal')
+  const sea = path('sea:Q44725')
+  const ocean = path('ocean:Q788')
+
+  await expect(filters.getByLabel('Реки')).toBeChecked()
+  await expect(lake).toHaveAttribute('fill-opacity', '1')
+  const before = await mountain.getAttribute('d')
+  await filters.getByLabel('Озёра').uncheck()
+  await filters.getByLabel('Горы').check()
+  await filters.getByLabel('Моря', { exact: true }).check()
+  await expect(lake).toHaveAttribute('fill-opacity', '0')
+  await expect(mountain).not.toHaveAttribute('stroke', 'none')
+  await expect(mountain).toHaveAttribute('d', before)
+  await expect(sea).not.toHaveAttribute('fill-opacity', '0')
+  await expect(ocean).toHaveAttribute('fill-opacity', '0')
+  await filters.getByLabel('Океаны').check()
+  await expect(ocean).not.toHaveAttribute('fill-opacity', '0')
+
+  const bering = await areaPoint(page, 'sea:Q44725')
+  await page.mouse.move(bering.x, bering.y)
+  await expect(page.getByRole('tooltip')).toContainText('Берингово море')
+  await start(page)
+  await expect(filters).toHaveCount(0)
+  await expect(sea).toBeHidden()
+  await expect(ocean).toBeHidden()
+  await expect(mountain).toHaveAttribute('stroke', 'none')
+  await expect(lake).toHaveAttribute('fill-opacity', '1')
+})
+
 test('desktop study, share, first answer, full results, repeat and exit', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await openStudy(page)

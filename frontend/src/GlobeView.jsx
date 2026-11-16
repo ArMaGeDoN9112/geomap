@@ -1,21 +1,26 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
-import { MapControls, MapInspection } from './mapPresentation'
+import { MapControls, MapInspection, defaultStudyHighlights } from './mapPresentation'
 import { createGlobe, loadElevation } from './globeScene'
 
 const arrows = {
   ArrowLeft: [0.13, 0], ArrowRight: [-0.13, 0], ArrowUp: [0, 0.13], ArrowDown: [0, -0.13],
 }
 
-export default function GlobeView({ atlas, political, taskNumber, highlight, marker, feedback, onSelect, controlsTarget }) {
+export default function GlobeView({ atlas, political, taskNumber, highlight, studyHighlights, marker, feedback, onSelect, controlsTarget }) {
   const element = useRef(null)
   const pin = useRef(null)
   const globe = useRef(null)
   const [status, setStatus] = useState('loading')
   const [hovered, setHovered] = useState(null)
   const training = taskNumber !== undefined
+  const kinds = training ? defaultStudyHighlights : studyHighlights
   const missed = Boolean(feedback && !feedback.correct)
   const outlined = missed ? feedback.object_id : feedback ? null
     : !training || !political || highlight ? hovered?.id ?? marker?.objectId : null
+
+  const pickPoint = useEffectEvent((x, y) => globe.current.pick(x, y, !training))
+  const initGlobe = useEffectEvent((container, grid, overview) =>
+    createGlobe(container, pin.current, atlas, political, grid, overview, kinds))
 
   const select = useEffectEvent((point, needsConfirmation) => {
     if (!point) return
@@ -54,7 +59,7 @@ export default function GlobeView({ atlas, political, taskNumber, highlight, mar
     const pointers = new Set()
     const pick = (event) => {
       const { left, top, width, height } = container.getBoundingClientRect()
-      return globe.current.pick(2 * (event.clientX - left) / width - 1, 1 - 2 * (event.clientY - top) / height)
+      return pickPoint(2 * (event.clientX - left) / width - 1, 1 - 2 * (event.clientY - top) / height)
     }
     const pointerDown = (event) => {
       cancelHover()
@@ -96,7 +101,7 @@ export default function GlobeView({ atlas, political, taskNumber, highlight, mar
         clear()
         return
       }
-      if (event.key === 'Enter') select(view.pick(), true)
+      if (event.key === 'Enter') select(pickPoint(), true)
       else if (arrows[event.key]) view.rotate(...arrows[event.key])
       else if (event.key === '+' || event.key === '=') view.zoomIn()
       else if (event.key === '-') view.zoomOut()
@@ -116,7 +121,7 @@ export default function GlobeView({ atlas, political, taskNumber, highlight, mar
 
     Promise.all([loadElevation(controller.signal), overview.decode()]).then(([grid]) => {
       if (controller.signal.aborted) return
-      globe.current = createGlobe(container, pin.current, atlas, political, grid, overview)
+      globe.current = initGlobe(container, grid, overview)
       for (const [type, listener] of Object.entries(events)) container.addEventListener(type, listener, true)
       setStatus('ready')
     }).catch((error) => {
@@ -137,6 +142,10 @@ export default function GlobeView({ atlas, political, taskNumber, highlight, mar
     setHovered(null)
     if (taskNumber !== 1) globe.current?.reset()
   }, [taskNumber])
+
+  useEffect(() => {
+    if (status === 'ready' && !political) globe.current.setHighlights(kinds)
+  }, [status, political, kinds])
 
   useEffect(() => {
     if (status === 'ready') globe.current.outline(outlined, missed)
