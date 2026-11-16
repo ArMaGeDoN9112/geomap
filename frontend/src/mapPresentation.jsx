@@ -8,6 +8,11 @@ export const studyKinds = {
   plain: 'Равнины', upland: 'Возвышенности', landmark: 'Ориентиры',
 }
 export const defaultStudyHighlights = ['river', 'lake']
+
+export function studyKind(kind) {
+  return kind === 'summit' ? 'mountain' : kind
+}
+
 const landOutline = { color: '#ffd88b', weight: 2, fill: false }
 const waterArea = { color: '#93dcf9', weight: 1.25, fillColor: '#57bbec', fillOpacity: 0.25 }
 export const studyAreaStyles = {

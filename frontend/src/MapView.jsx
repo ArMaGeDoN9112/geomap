@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useEffectEvent, useRef, useState } from 'rea
 import L from 'leaflet'
 import {
   MapControls, MapInspection, countryColors, defaultStudyHighlights, isMarine, mappedObjects,
-  physicalMapColors, studyAreaStyles,
+  physicalMapColors, studyAreaStyles, studyKind,
 } from './mapPresentation'
 
 const waterStyle = {
@@ -19,7 +19,7 @@ function objectAt(element) {
   return element?.closest?.('[data-object-id]')?.dataset.objectId
 }
 
-function FlatMap({ atlas, political, taskNumber, highlight, studyHighlights, marker, feedback, onSelect, controlsTarget }) {
+function FlatMap({ atlas, political, taskNumber, highlight, studyHighlights, hoverKinds, marker, feedback, onSelect, controlsTarget }) {
   const element = useRef(null)
   const mapState = useRef(null)
   const hovered = useRef(null)
@@ -52,6 +52,21 @@ function FlatMap({ atlas, political, taskNumber, highlight, studyHighlights, mar
       outline.options.coordsToLatLng = isMarine(object) ? undefined : coordsToLatLng
       outline.addData(object.geometry)
     }
+  })
+
+  const clearHover = useEffectEvent(() => {
+    hovered.current = null
+    setInspected(null)
+    paintOutline()
+  })
+
+  const pointerHit = useEffectEvent((event) => {
+    const id = objectAt(event.target)
+    if (!id || !hoverKinds) return id
+    const { catalog } = mapState.current
+    const enabled = (hit) => hit && hoverKinds.includes(studyKind(catalog.get(hit).kind))
+    if (enabled(id)) return id
+    return document.elementsFromPoint(event.clientX, event.clientY).map(objectAt).find(enabled)
   })
 
   const choosePoint = useEffectEvent((hit, position, confirm) => {
@@ -223,14 +238,10 @@ function FlatMap({ atlas, political, taskNumber, highlight, studyHighlights, mar
         choosePoint(objectAt(originalEvent.target), latlng, touch)
       }
     }
-    const clearHover = () => {
-      hovered.current = null
-      setInspected(null)
-      paintOutline()
-    }
+    const pointerLeave = () => clearHover()
     const pointerMove = (event) => {
       if (event.pointerType === 'touch' || event.buttons) return
-      const hit = objectAt(event.target)
+      const hit = pointerHit(event)
       if (hit === hovered.current) return
       hovered.current = hit
       inspect(hit)
@@ -249,12 +260,12 @@ function FlatMap({ atlas, political, taskNumber, highlight, studyHighlights, mar
     }
     container.addEventListener('pointerdown', pointerDown)
     container.addEventListener('pointermove', pointerMove)
-    container.addEventListener('pointerleave', clearHover)
+    container.addEventListener('pointerleave', pointerLeave)
     container.addEventListener('touchstart', touchStart, { passive: true })
     container.addEventListener('touchend', touchEnd, { passive: true })
     container.addEventListener('touchcancel', touchEnd, { passive: true })
     document.addEventListener('keydown', keyDown)
-    map.on('click', click).on('movestart', clearHover)
+    map.on('click', click).on('movestart', pointerLeave)
 
     const observer = new ResizeObserver(() => map.invalidateSize({ pan: false, animate: false }))
     observer.observe(container)
@@ -262,12 +273,12 @@ function FlatMap({ atlas, political, taskNumber, highlight, studyHighlights, mar
       observer.disconnect()
       container.removeEventListener('pointerdown', pointerDown)
       container.removeEventListener('pointermove', pointerMove)
-      container.removeEventListener('pointerleave', clearHover)
+      container.removeEventListener('pointerleave', pointerLeave)
       container.removeEventListener('touchstart', touchStart)
       container.removeEventListener('touchend', touchEnd)
       container.removeEventListener('touchcancel', touchEnd)
       document.removeEventListener('keydown', keyDown)
-      map.off('movestart', clearHover)
+      map.off('movestart', pointerLeave)
       map.remove()
       mapState.current = null
     }
@@ -279,6 +290,10 @@ function FlatMap({ atlas, political, taskNumber, highlight, studyHighlights, mar
       layer.setStyle(kinds.includes(kind) ? shown : hidden)
     }
   }, [atlas, studyHighlights, training])
+
+  useEffect(() => {
+    clearHover()
+  }, [hoverKinds])
 
   useEffect(() => {
     setInspected(null)
@@ -357,6 +372,8 @@ export function MapView({ globe, ...props }) {
 }
 
 function MapFooter({ atlas, political, globe, active }) {
+  const { attributions } = atlas.list.map
+
   return (
     <div className="map-footer" aria-hidden={active ? undefined : true}>
       <div className="map-legend" aria-label="Условные обозначения">
@@ -370,15 +387,16 @@ function MapFooter({ atlas, political, globe, active }) {
           </>
         )}
       </div>
-      <div className="attribution">
-        {atlas.list.map.attributions.map(({ text, url }) => <a key={url} href={url} target="_blank" rel="noreferrer">{text}</a>)}
-        {globe && <a href="https://www.ncei.noaa.gov/products/etopo-global-relief-model" target="_blank" rel="noreferrer">NOAA ETOPO 2022</a>}
-        {!political && (
-          <a href="https://cloudless.eox.at/" target="_blank" rel="noreferrer">
-            EOxCloudless by EOX IT Services GmbH · modified Copernicus Sentinel data 2016 &amp; 2017
-          </a>
-        )}
-      </div>
+      {(!political || attributions.length > 0) && (
+        <div className="attribution">
+          {attributions.map(({ text, url }) => <a key={url} href={url} target="_blank" rel="noreferrer">{text}</a>)}
+          {!political && (
+            <a href="https://cloudless.eox.at/" target="_blank" rel="noreferrer">
+              EOxCloudless by EOX IT Services GmbH · modified Copernicus Sentinel data 2016 &amp; 2017
+            </a>
+          )}
+        </div>
+      )}
     </div>
   )
 }

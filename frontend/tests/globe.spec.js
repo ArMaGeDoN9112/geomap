@@ -1,5 +1,52 @@
 import { expect, test } from '@playwright/test'
 
+test('filters overlapping physical features under the cursor in 2D and 3D', async ({ page }) => {
+  const area = (kind, name, size) => ({
+    id: kind, kind, name,
+    geometry: { type: 'Polygon', coordinates: [[
+      [-size, -size], [size, -size], [size, size], [-size, size], [-size, -size],
+    ]] },
+  })
+  await page.route('**/api/lists/russia?category=russia', (route) => route.fulfill({ json: {
+    title: 'Физическая карта', categories: [{ id: 'russia', label: 'Россия' }], available_count: 2,
+    map: { bounds: [-30, -25, 30, 25], attributions: [] },
+    objects: [area('mountain', 'Тестовые горы', 15), area('lake', 'Тестовое озеро', 8)],
+  } }))
+  await page.goto('/russia')
+  const hover = page.getByRole('group', { name: 'Подсветка под курсором' })
+  const lakes = hover.getByRole('checkbox', { name: 'Озёра' })
+  const mountains = hover.getByRole('checkbox', { name: 'Горы' })
+  const permanentLakes = page.getByRole('group', { name: 'Подсветка на карте' }).getByLabel('Озёра')
+  const flat = page.getByLabel('Интерактивная карта мира')
+  const globe = page.getByRole('region', { name: 'Интерактивный глобус' })
+  const lakePath = flat.locator('path[data-object-id="lake"]')
+  const tooltip = page.getByRole('tooltip')
+
+  await flat.hover()
+  await expect(tooltip).toContainText('Тестовое озеро')
+  await lakes.uncheck()
+  await flat.hover()
+  await expect(tooltip).toContainText('Тестовые горы')
+  await expect(lakePath).toHaveAttribute('fill-opacity', '1')
+  await expect(flat.locator('path[stroke="#125b50"]')).toHaveCount(1)
+  await mountains.uncheck()
+  await flat.hover()
+  await expect(tooltip).toHaveCount(0)
+  await expect(flat.locator('path[stroke="#125b50"]')).toHaveCount(0)
+
+  await page.getByRole('button', { name: '3D', exact: true }).click()
+  await expect(globe).toHaveAttribute('aria-busy', 'false', { timeout: 15_000 })
+  await globe.hover()
+  await expect(tooltip).toHaveCount(0)
+  await mountains.check()
+  await globe.hover()
+  await expect(tooltip).toContainText('Тестовые горы')
+  await lakes.check()
+  await permanentLakes.uncheck()
+  await globe.hover()
+  await expect(tooltip).toContainText('Тестовое озеро')
+})
+
 test('switches 3D hover outlines without uploading the globe texture again', async ({ page }) => {
   await page.addInitScript(() => {
     window.globeUploads = []
@@ -114,7 +161,7 @@ test('loads detailed satellite tiles in both physical map views', async ({ page 
   await expect(page.getByRole('tooltip')).toHaveCount(0)
   await expect.poll(async () => (await capture()).equals(detailed)).toBe(true)
 
-  const lakes = page.getByRole('checkbox', { name: 'Озёра' })
+  const lakes = page.getByRole('group', { name: 'Подсветка на карте' }).getByRole('checkbox', { name: 'Озёра' })
   await lakes.uncheck()
   await expect.poll(async () => (await capture()).equals(detailed)).toBe(false)
   await lakes.check()

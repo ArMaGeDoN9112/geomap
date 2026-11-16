@@ -4,7 +4,7 @@ import {
   Link2, MapPin, Mountain, MousePointer2, RotateCcw, Target, X,
 } from 'lucide-react'
 import { MapView } from './MapView'
-import { defaultStudyHighlights, studyKinds } from './mapPresentation'
+import { defaultStudyHighlights, studyKind, studyKinds } from './mapPresentation'
 import { request } from './api'
 
 const political = /^\/world\/?$/.test(window.location.pathname)
@@ -35,6 +35,22 @@ function CategorySelect({ id, label, options, value, onChange, disabled, autoFoc
   )
 }
 
+function StudyHighlights({ label, options, selected, onChange }) {
+  return (
+    <fieldset className="study-highlights">
+      <legend>{label}</legend>
+      {options.map(([kind, title]) => (
+        <label key={kind}>
+          <input type="checkbox" checked={selected.includes(kind)}
+            onChange={({ target: { checked } }) => onChange((current) =>
+              checked ? [...current, kind] : current.filter((item) => item !== kind))} />
+          {title}
+        </label>
+      ))}
+    </fieldset>
+  )
+}
+
 export function App() {
   const [category, setCategory] = useState(() => new URLSearchParams(window.location.search).get('category') || defaultCategory)
   const [count, setCount] = useState(null)
@@ -47,6 +63,7 @@ export function App() {
   const [selection, setSelection] = useState(null)
   const [highlight, setHighlight] = useState(false)
   const [studyHighlights, setStudyHighlights] = useState(defaultStudyHighlights)
+  const [hoverKinds, setHoverKinds] = useState(() => Object.keys(studyKinds))
   const [globe, setGlobe] = useState(false)
   const [controlsTarget, setControlsTarget] = useState(null)
   const [modal, setModal] = useState(null)
@@ -62,6 +79,10 @@ export function App() {
   const task = run?.task
   const ready = atlas?.category === category
   const availableKinds = new Set([...(atlas?.list.objects ?? []), ...(atlas?.list.marine ?? [])].map((object) => object.kind))
+  const types = Object.entries(studyKinds)
+  const highlightOptions = types.filter(([kind]) => availableKinds.has(kind))
+  const availableHoverKinds = new Set(Array.from(availableKinds, studyKind))
+  const hoverOptions = types.filter(([kind]) => availableHoverKinds.has(kind))
   const shareUrl = new URL(listPath, window.location.origin)
   if (category !== defaultCategory) shareUrl.searchParams.set('category', category)
 
@@ -356,17 +377,10 @@ export function App() {
                           <p className="desktop-hint">Наведи указатель на объект, чтобы узнать название.</p>
                           <p className="touch-hint">Коснись объекта, чтобы узнать название.</p>
                           <p className="hybrid-hint">Наведи указатель на объект или коснись его, чтобы узнать название.</p>
-                          <fieldset className="study-highlights">
-                            <legend>Подсветка на карте</legend>
-                            {Object.entries(studyKinds).filter(([kind]) => availableKinds.has(kind)).map(([kind, label]) => (
-                              <label key={kind}>
-                                <input type="checkbox" checked={studyHighlights.includes(kind)}
-                                  onChange={({ target: { checked } }) => setStudyHighlights((current) =>
-                                    checked ? [...current, kind] : current.filter((item) => item !== kind))} />
-                                {label}
-                              </label>
-                            ))}
-                          </fieldset>
+                          <StudyHighlights label="Подсветка на карте" options={highlightOptions}
+                            selected={studyHighlights} onChange={setStudyHighlights} />
+                          <StudyHighlights label="Подсветка под курсором" options={hoverOptions}
+                            selected={hoverKinds} onChange={setHoverKinds} />
                         </>
                       )}
                       <div className="map-tip">
@@ -390,6 +404,7 @@ export function App() {
                   taskNumber={task?.number}
                   highlight={highlight && !feedback}
                   studyHighlights={studyHighlights}
+                  hoverKinds={political || training ? undefined : hoverKinds}
                   marker={feedback ?? selection}
                   feedback={feedback}
                   onSelect={(point) => {

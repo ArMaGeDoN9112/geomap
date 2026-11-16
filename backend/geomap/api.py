@@ -261,10 +261,9 @@ def object_list(category: regions.PhysicalCategory = "russia"):
             ),
             "attributions": [
                 {
-                    "text": "© OpenStreetMap contributors (ODbL)",
+                    "text": "© OpenStreetMap",
                     "url": "https://www.openstreetmap.org/copyright",
                 },
-                {"text": "Made with Natural Earth", "url": "https://www.naturalearthdata.com/"},
                 *([{
                     "text": "SCAR Antarctic Digital Database (CC BY 4.0)",
                     "url": "https://doi.org/10.5285/6a27ab9e-1258-49b1-bd2c-fcbed310ab45",
@@ -295,10 +294,7 @@ def country_list(category: regions.WorldCategory = "world"):
             "bounds": regions.REGIONS[category][1],
             "land": "/world-land.geojson" if category != "world" else None,
             "reference_lines": "/world-boundaries.geojson" if category != "world" else None,
-            "attributions": [
-                {"text": "Made with Natural Earth", "url": "https://www.naturalearthdata.com/"},
-                {"text": "Флаги: Flagpedia", "url": "https://flagpedia.net/"},
-            ],
+            "attributions": [],
         },
         "objects": objects,
     }

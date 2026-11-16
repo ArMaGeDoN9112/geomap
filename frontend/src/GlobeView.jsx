@@ -6,7 +6,7 @@ const arrows = {
   ArrowLeft: [0.13, 0], ArrowRight: [-0.13, 0], ArrowUp: [0, 0.13], ArrowDown: [0, -0.13],
 }
 
-export default function GlobeView({ atlas, political, taskNumber, highlight, studyHighlights, marker, feedback, onSelect, controlsTarget }) {
+export default function GlobeView({ atlas, political, taskNumber, highlight, studyHighlights, hoverKinds, marker, feedback, onSelect, controlsTarget }) {
   const element = useRef(null)
   const pin = useRef(null)
   const globe = useRef(null)
@@ -18,7 +18,7 @@ export default function GlobeView({ atlas, political, taskNumber, highlight, stu
   const outlined = missed ? feedback.object_id : feedback ? null
     : !training || !political || highlight ? hovered?.id ?? marker?.objectId : null
 
-  const pickPoint = useEffectEvent((x, y) => globe.current.pick(x, y, !training))
+  const pickPoint = useEffectEvent((x, y, hovering) => globe.current.pick(x, y, !training, hovering ? hoverKinds : undefined))
   const initGlobe = useEffectEvent((container, grid, overview) =>
     createGlobe(container, pin.current, atlas, political, grid, overview, kinds))
 
@@ -57,9 +57,9 @@ export default function GlobeView({ atlas, political, taskNumber, highlight, stu
     }
     let pressed = null
     const pointers = new Set()
-    const pick = (event) => {
+    const pick = (event, hovering) => {
       const { left, top, width, height } = container.getBoundingClientRect()
-      return pickPoint(2 * (event.clientX - left) / width - 1, 1 - 2 * (event.clientY - top) / height)
+      return pickPoint(2 * (event.clientX - left) / width - 1, 1 - 2 * (event.clientY - top) / height, hovering)
     }
     const pointerDown = (event) => {
       cancelHover()
@@ -77,7 +77,7 @@ export default function GlobeView({ atlas, political, taskNumber, highlight, stu
         hoverEvent = event
         if (hoverFrame === null) hoverFrame = requestAnimationFrame(() => {
           hoverFrame = null
-          setHovered(pick(hoverEvent)?.object ?? null)
+          setHovered(pick(hoverEvent, true)?.object ?? null)
           hoverEvent = null
         })
       }
@@ -142,6 +142,10 @@ export default function GlobeView({ atlas, political, taskNumber, highlight, stu
     setHovered(null)
     if (taskNumber !== 1) globe.current?.reset()
   }, [taskNumber])
+
+  useEffect(() => {
+    setHovered(null)
+  }, [hoverKinds])
 
   useEffect(() => {
     if (status === 'ready' && !political) globe.current.setHighlights(kinds)

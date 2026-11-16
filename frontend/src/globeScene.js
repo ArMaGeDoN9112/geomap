@@ -4,7 +4,7 @@ import {
 } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { acceleratedRaycast, MeshBVH } from 'three-mesh-bvh'
-import { countryColors, mappedObjects, physicalMapColors, studyAreaStyles } from './mapPresentation'
+import { countryColors, mappedObjects, physicalMapColors, studyAreaStyles, studyKind } from './mapPresentation'
 import { globeImagery } from './globeImagery'
 
 const gridWidth = 1440
@@ -380,7 +380,7 @@ export function createGlobe(container, pinElement, atlas, political, grid, overv
   reset()
 
   return {
-    pick(x = 0, y = 0, studying) {
+    pick(x = 0, y = 0, studying, hoverKinds) {
       const hit = hitAt(x, y)
       if (!hit) return null
       const { x: u, y: v } = hit.uv
@@ -388,7 +388,8 @@ export function createGlobe(container, pinElement, atlas, political, grid, overv
       const latitude = Math.max(-90, Math.min(90, v * 180 - 90))
       const xOnMap = u * width, yOnMap = (1 - v) * width / 2
       const match = pickOrder.find(({ object, path, west, north, east, south }) =>
-        (studying || !studyOnly.has(object)) && xOnMap >= west && xOnMap <= east && yOnMap >= north && yOnMap <= south &&
+        (studying || !studyOnly.has(object)) && (!hoverKinds || hoverKinds.includes(studyKind(object.kind))) &&
+        xOnMap >= west && xOnMap <= east && yOnMap >= north && yOnMap <= south &&
         base.isPointInPath(path, xOnMap, yOnMap, 'evenodd'))
       return { longitude, latitude, object: match?.object }
     },
