@@ -1,0 +1,36 @@
+services:
+  db:
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run deploy.sh to set the database password}
+
+  api:
+    restart: unless-stopped
+    ports: !override []
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Run deploy.sh to set the database password}
+      CORS_ORIGINS: https://${GEOMAP_DOMAIN:?Set GEOMAP_DOMAIN}
+
+  frontend:
+    restart: unless-stopped
+    ports: !override []
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      frontend:
+        condition: service_healthy
+    environment:
+      GEOMAP_DOMAIN: ${GEOMAP_DOMAIN:?Set GEOMAP_DOMAIN}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
