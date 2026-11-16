@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Compass, Crosshair, Globe2,
-  Link2, MapPin, Mountain, MousePointer2, RotateCcw, Target, X,
+  Info, Link2, MapPin, Mountain, MousePointer2, RotateCcw, Target, X,
 } from 'lucide-react'
 import { MapView } from './MapView'
 import { defaultStudyHighlights, studyKind, studyKinds } from './mapPresentation'
@@ -13,6 +13,12 @@ const listEndpoint = `/api/lists${listPath}`
 const defaultCategory = political ? 'world' : 'russia'
 const listTitle = political ? 'Страны мира' : 'Природа России'
 const ObjectIcon = political ? Globe2 : Mountain
+const dialogTitles = {
+  start: 'Начать тренировку',
+  exit: 'Выйти из тренировки?',
+  share: 'Ссылка на список',
+  about: 'О сервисе GeoMap',
+}
 
 function CategorySelect({ id, label, options, value, onChange, disabled, autoFocus }) {
   const group = options.find((option) => option.group)?.group
@@ -262,10 +268,15 @@ export function App() {
               <Target size={17} /> Тренировка
             </button>
           </nav>
-          <button className="share-button" onClick={share} disabled={pending} aria-label="Поделиться списком">
-            {copied ? <Check size={17} /> : <Link2 size={18} />}
-            <span>{copied ? 'Ссылка скопирована' : 'Поделиться'}</span>
-          </button>
+          <div className="header-actions">
+            <button className="share-button" onClick={share} disabled={pending} aria-label="Поделиться списком">
+              {copied ? <Check size={17} /> : <Link2 size={18} />}
+              <span>{copied ? 'Ссылка скопирована' : 'Поделиться'}</span>
+            </button>
+            <button className="icon-button" onClick={() => setModal('about')} disabled={pending} aria-label="О сервисе" aria-haspopup="dialog" title="О сервисе">
+              <Info size={20} aria-hidden="true" />
+            </button>
+          </div>
           <span className="sr-only" role="status">{copied ? 'Ссылка скопирована' : ''}</span>
         </div>
       </header>
@@ -422,7 +433,10 @@ export function App() {
       </main>
 
       {modal && (
-        <Dialog title={modal === 'start' ? 'Начать тренировку' : modal === 'exit' ? 'Выйти из тренировки?' : 'Ссылка на список'} onClose={() => setModal(null)} pending={pending}>
+        <Dialog title={dialogTitles[modal]} onClose={() => setModal(null)} pending={pending}>
+          {modal === 'about' && (
+            <p>GeoMap помогает запомнить, где находятся реки, озёра, горы и страны. В режиме «Изучение» узнавай названия объектов на физической и политической картах. В режиме «Тренировка» находи объекты по памяти и сразу проверяй ответы.</p>
+          )}
           {modal === 'start' && (
             <form onSubmit={begin}>
               <CategorySelect id="category" label="Категория" options={atlas.list.categories}
@@ -485,14 +499,19 @@ function Dialog({ title, children, onClose, pending }) {
     return () => element.close()
   }, [])
 
+  function close() {
+    dialog.current.close()
+    onClose()
+  }
+
   return (
     <dialog ref={dialog} aria-labelledby="dialog-title" onCancel={(event) => {
       event.preventDefault()
-      if (!pending) onClose()
+      if (!pending) close()
     }}>
       <div className="dialog-heading">
         <h2 id="dialog-title">{title}</h2>
-        <button className="icon-button" onClick={onClose} disabled={pending} aria-label="Закрыть"><X size={20} /></button>
+        <button className="icon-button" onClick={close} disabled={pending} aria-label="Закрыть"><X size={20} /></button>
       </div>
       {children}
     </dialog>
