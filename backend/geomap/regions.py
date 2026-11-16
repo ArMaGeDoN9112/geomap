@@ -9,7 +9,11 @@ WorldCategory = Literal[
     "world", "eurasia", "europe", "asia", "africa", "north-america", "south-america", "oceania",
     "antarctica",
 ]
-PhysicalCategory = Literal[WorldCategory, "russia"]
+PhysicalCategory = Literal[
+    WorldCategory, "russia", "russia-records", "russia-physical",
+    "russia-islands", "russia-peninsulas", "russia-straits", "russia-bays", "russia-seas",
+    "russia-lakes", "russia-rivers", "russia-plains", "russia-uplands", "russia-mountains",
+]
 DATA = Path(__file__).parent / "data"
 
 REGIONS = {
@@ -34,6 +38,31 @@ MARINE = [
     (obj, shape(obj["geometry"]))
     for obj in json.loads((DATA / "marine-objects.json").read_text(encoding="utf-8"))
 ]
+NOMENCLATURE = json.loads((DATA / "russia-nomenclature.json").read_text(encoding="utf-8"))
+NOMENCLATURE_GROUP = "Физическая карта России"
+NOMENCLATURE_CATEGORIES = {
+    "russia-records": ("Самое-самое в России", NOMENCLATURE["records"]),
+    "russia-physical": (
+        NOMENCLATURE_GROUP,
+        [object_id for section in NOMENCLATURE["sections"] for object_id in section["object_ids"]],
+    ),
+    **{
+        section["id"]: (section["label"], section["object_ids"])
+        for section in NOMENCLATURE["sections"]
+    },
+}
+NOMENCLATURE_OBJECTS = {
+    obj["id"]: {"prompt": f'Покажи «{obj["name"]}»', **obj}
+    for obj in NOMENCLATURE["objects"]
+}
+ASIAN_SEAS = {"Q33629", "Q7988", "Q163434", "Q159252", "Q44725", "Q41602", "Q27092"}
+for obj, _ in MARINE:
+    if obj["kind"] == "sea" and obj.get("russia"):
+        NOMENCLATURE_OBJECTS[obj["id"]] = {
+            **obj, "prompt": f'Покажи «{obj["name"]}»',
+            "continent": "asia" if obj["id"].split(":")[1] in ASIAN_SEAS else "europe",
+        }
+
 for mountain in list(EXTRA_PHYSICAL.values()):
     if mountain["kind"] == "mountain":
         summit = mountain["summit"]
@@ -42,6 +71,7 @@ for mountain in list(EXTRA_PHYSICAL.values()):
             "prompt": f'Покажи горный массив, где находится вершина «{summit["name"]}»',
         }
 ASIAN_RUSSIAN_WATERS = {"baikal", "khanka", "taymyr"}
+TRAINING_PHYSICAL = EXTRA_PHYSICAL | NOMENCLATURE_OBJECTS
 
 
 def included_continents(category: str):
@@ -53,6 +83,10 @@ def physical_continent(obj):
 
 
 def physical_objects(russian_objects, category: PhysicalCategory):
+    if category in NOMENCLATURE_CATEGORIES:
+        catalog = {obj["id"]: obj for obj in russian_objects} | TRAINING_PHYSICAL
+        return [catalog[object_id] for object_id in NOMENCLATURE_CATEGORIES[category][1]]
+
     if category == "russia":
         return [*russian_objects, *(obj for obj in EXTRA_PHYSICAL.values() if obj.get("russia"))]
 
@@ -71,8 +105,15 @@ def marine_objects(category: PhysicalCategory):
 
 
 def categories(*, political: bool):
-    return [
+    options = [
         {"id": key, "label": label}
         for key, (label, _) in REGIONS.items()
         if not political or key != "russia"
     ]
+    if not political:
+        options.extend(
+            {"id": key, "label": label, "group": NOMENCLATURE_GROUP}
+            if key != "russia-records" else {"id": key, "label": label}
+            for key, (label, _) in NOMENCLATURE_CATEGORIES.items()
+        )
+    return options

@@ -117,11 +117,15 @@ class Summit(BaseModel):
 class GeographicObject(BaseModel):
     id: str
     name: str
-    kind: Literal["lake", "river", "mountain", "summit"]
+    kind: Literal[
+        "lake", "river", "mountain", "summit", "sea", "island", "peninsula", "strait",
+        "bay", "plain", "upland", "landmark",
+    ]
     region: str
     geometry: dict
     centerline: dict | None = None
     summit: Summit | None = None
+    related_peak: str | None = None
 
 
 class MarineObject(BaseModel):
@@ -150,6 +154,7 @@ class PhysicalMap(MapConfig):
 class CategoryOption(BaseModel):
     id: regions.PhysicalCategory
     label: str
+    group: str | None = None
 
 
 class Catalog(BaseModel):
@@ -237,15 +242,19 @@ def object_list(category: regions.PhysicalCategory = "russia"):
     with storage.connect() as db:
         russian_objects = storage.list_objects(db, include_geometry=True)
     objects = regions.physical_objects(russian_objects, category)
-    russia = category == "russia"
+    nomenclature = regions.NOMENCLATURE_CATEGORIES.get(category)
+    russia = category == "russia" or nomenclature is not None
+    label, bounds = regions.REGIONS["russia" if russia else category]
     return {
         "id": LIST_ID,
-        "title": "Природа России" if russia else "Природа мира" if category == "world" else regions.REGIONS[category][0],
+        "title": nomenclature[0] if nomenclature else {
+            "russia": "Природа России", "world": "Природа мира",
+        }.get(category, label),
         "categories": regions.categories(political=False),
         "training_count": min(12, len(objects)),
         "available_count": len(objects),
         "map": {
-            "bounds": regions.REGIONS[category][1],
+            "bounds": bounds,
             "relief": "/physical-relief.webp",
             "reference_lines": (
                 "/api/maps/russia/reference-lines.geojson" if russia else "/world-boundaries.geojson"
@@ -263,7 +272,7 @@ def object_list(category: regions.PhysicalCategory = "russia"):
             ],
         },
         "objects": [{**obj, "region": regions.REGIONS[regions.physical_continent(obj)][0]} for obj in objects],
-        "marine": regions.marine_objects(category),
+        "marine": [] if nomenclature else regions.marine_objects(category),
     }
 
 

@@ -2,11 +2,18 @@ import { createPortal } from 'react-dom'
 import { Crosshair, Minus, Plus } from 'lucide-react'
 
 export const physicalMapColors = { boundary: '#fff5ddae', river: '#73bfd4', water: '#82bad266' }
-export const studyKinds = { mountain: 'Горы', river: 'Реки', lake: 'Озёра', sea: 'Моря', ocean: 'Океаны' }
+export const studyKinds = {
+  mountain: 'Горы', river: 'Реки', lake: 'Озёра', sea: 'Моря', ocean: 'Океаны',
+  island: 'Острова', peninsula: 'Полуострова', strait: 'Проливы', bay: 'Заливы',
+  plain: 'Равнины', upland: 'Возвышенности', landmark: 'Ориентиры',
+}
 export const defaultStudyHighlights = ['river', 'lake']
+const landOutline = { color: '#ffd88b', weight: 2, fill: false }
+const waterArea = { color: '#93dcf9', weight: 1.25, fillColor: '#57bbec', fillOpacity: 0.25 }
 export const studyAreaStyles = {
-  mountain: { color: '#ffd88b', weight: 2, fill: false },
-  sea: { color: '#93dcf9', weight: 1.25, fillColor: '#57bbec', fillOpacity: 0.25 },
+  mountain: landOutline, island: landOutline, peninsula: landOutline, plain: landOutline,
+  upland: landOutline, landmark: landOutline, summit: landOutline,
+  sea: waterArea, bay: waterArea, strait: waterArea,
   ocean: { stroke: false, fillColor: '#518bde', fillOpacity: 0.19 },
 }
 
@@ -20,17 +27,21 @@ export const countryColors = [
 ]
 const formatPopulation = new Intl.NumberFormat('ru-RU', { notation: 'compact', maximumFractionDigits: 1 })
 const formatElevation = new Intl.NumberFormat('ru-RU')
-const physicalKinds = { river: 'Река', lake: 'Озеро', mountain: 'Горный массив', sea: 'Море', ocean: 'Океан' }
+const physicalKinds = {
+  river: 'Река', lake: 'Озеро', mountain: 'Горный массив', sea: 'Море', ocean: 'Океан',
+  island: 'Острова и архипелаги', peninsula: 'Полуостров', strait: 'Пролив', bay: 'Залив',
+  plain: 'Равнина или плоскогорье', upland: 'Возвышенность', landmark: 'Ориентир', summit: 'Вершина',
+}
 
 export function mappedObjects({ objects, marine = [] }, political) {
-  // Water features stay selectable where rivers and lakes cross a mountain area.
-  return political ? objects : [
-    ...marine.filter((object) => object.kind === 'ocean'),
-    ...marine.filter((object) => object.kind === 'sea'),
-    ...objects.filter((object) => object.kind === 'mountain'),
-    ...objects.filter((object) => object.kind === 'river'),
-    ...objects.filter((object) => object.kind === 'lake'),
-  ]
+  if (political) return objects
+  // Draw smaller features over the surrounding areas so they stay selectable.
+  const order = ['ocean', 'sea', 'plain', 'peninsula', 'island', 'mountain', 'upland', 'bay', 'strait', 'river', 'lake', 'landmark']
+  const features = [...marine, ...objects]
+  const markedSummits = new Set(objects.filter((object) => object.kind === 'mountain').map((object) => object.summit?.id))
+  return order.flatMap((kind) => features.filter((object) =>
+    object.kind === kind || (kind === 'mountain' && object.kind === 'summit' && object.summit && !markedSummits.has(object.id))
+  ))
 }
 
 function ObjectTooltip({ object }) {
@@ -64,6 +75,7 @@ function ObjectTooltip({ object }) {
       {object.summit && (
         <p>Высшая точка · {object.summit.name}, {formatElevation.format(object.summit.elevation)} м</p>
       )}
+      {object.related_peak && <p>Вершина в списке · {object.related_peak}</p>}
     </div>
   )
 }

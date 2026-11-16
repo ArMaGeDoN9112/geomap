@@ -25,7 +25,7 @@ function FlatMap({ atlas, political, taskNumber, highlight, studyHighlights, mar
   const hovered = useRef(null)
   const [inspected, setInspected] = useState(null)
   const { map: config } = atlas.list
-  const russia = atlas.category === 'russia'
+  const russia = config.bounds[2] > 180
   const training = taskNumber !== undefined
 
   const inspect = useEffectEvent((hit) => {
@@ -123,6 +123,7 @@ function FlatMap({ atlas, political, taskNumber, highlight, studyHighlights, mar
     const coordsToLatLng = ([longitude, latitude]) =>
       L.latLng(latitude, russia && longitude < 0 ? longitude + 360 : longitude)
     const catalog = new Map(atlas.list.objects.map((object) => [object.id, object]))
+    const studyOnly = new Set(atlas.list.marine)
     const highlightLayers = []
     const summitMarkers = []
     for (const entry of mappedObjects(atlas.list, political)) {
@@ -152,10 +153,11 @@ function FlatMap({ atlas, political, taskNumber, highlight, studyHighlights, mar
         const path = layer.getElement()
         path.dataset.objectId = object.id
         path.classList.add(political ? 'country-area' : 'physical-area')
-        if (marine) path.classList.add('marine-area')
+        if (studyOnly.has(entry)) path.classList.add('marine-area')
         if (!political && !object.centerline) {
+          // Leaflet needs a transparent fill to receive pointer events inside mountain contours.
           const shown = studyAreaStyles[object.kind]
-            ? { ...invisibleArea, stroke: true, ...studyAreaStyles[object.kind] }
+            ? { ...invisibleArea, stroke: true, ...studyAreaStyles[object.kind], fill: true }
             : waterStyle
           highlightLayers.push([object.kind, layer, shown, invisibleArea])
         }

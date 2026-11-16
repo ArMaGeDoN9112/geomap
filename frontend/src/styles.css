@@ -547,20 +547,21 @@ p.error { color: #9b3528; font-size: 14px; margin-top: 9px; }
 .atlas-layout .activity { align-self: center; padding: 16px; }
 .atlas-layout .activity .panel-icon { display: none; }
 .atlas-layout .activity h2 { font-size: clamp(26px, 2.3vw, 34px); margin: 5px 0 8px; }
+.atlas-layout .activity > .input-label { margin-top: 4px; }
 .atlas-layout .activity .task-prompt { margin-top: 16px; }
 .atlas-layout .map-tip { margin-top: 14px; }
 .atlas-layout .activity-actions { padding-top: 16px; }
 .study-highlights {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 12px;
   margin: 14px 0 0;
   padding: 0 8px 4px;
   border: 1px solid var(--line);
   border-radius: 10px;
 }
 .study-highlights legend { padding: 0 5px; font-size: 13px; font-weight: 650; }
-.study-highlights label { display: flex; align-items: center; gap: 7px; min-height: 44px; cursor: pointer; font-size: 14px; }
+.study-highlights label { display: flex; align-items: center; gap: 7px; min-width: 66px; min-height: 44px; cursor: pointer; font-size: 14px; }
 .study-highlights input { flex: none; width: 17px; height: 17px; margin: 0; accent-color: var(--green); }
 
 @media (any-pointer: coarse) {
@@ -593,7 +594,6 @@ p.error { color: #9b3528; font-size: 14px; margin-top: 9px; }
   .atlas-layout .map-frame { min-height: max(320px, min(60dvh, 112vw)); }
   .atlas-layout .activity:not(:has(.task-status)) > :is(.desktop-hint, .touch-hint, .hybrid-hint) { display: none; }
   .atlas-layout .activity-map-tools { margin-bottom: 0; }
-  .study-highlights { grid-template-columns: repeat(auto-fit, minmax(85px, 1fr)); }
   .atlas-layout .activity-actions { padding-top: 10px; }
 }
 @media (max-width: 360px) {

@@ -108,6 +108,63 @@ def test_physical_study_provides_marine_areas_without_adding_training_tasks(clie
     assert {obj["id"] for obj in world["marine"]}.isdisjoint(obj["id"] for obj in world["objects"])
 
 
+def test_russian_nomenclature_catalogs_include_every_section_and_reuse_atlas_objects(client):
+    endpoint = "/api/lists/russia"
+    physical = client.get(endpoint, params={"category": "russia-physical"}).json()
+    records = client.get(endpoint, params={"category": "russia-records"}).json()
+    assert physical["title"] == "Физическая карта России"
+    assert records["title"] == "Самое-самое в России"
+    assert records["available_count"] == len(records["objects"]) == 27
+    assert {obj["kind"] for obj in records["objects"]} >= {"sea", "strait", "landmark", "summit"}
+
+    sections = {
+        "russia-islands": ("Острова", 11),
+        "russia-peninsulas": ("Полуострова", 6),
+        "russia-straits": ("Проливы", 8),
+        "russia-bays": ("Заливы", 8),
+        "russia-seas": ("Моря", 12),
+        "russia-lakes": ("Озёра", 6),
+        "russia-rivers": ("Реки", 28),
+        "russia-plains": ("Равнины", 3),
+        "russia-uplands": ("Возвышенности", 8),
+        "russia-mountains": ("Горы, нагорья", 22),
+    }
+    options = {option["id"]: option for option in physical["categories"]}
+    selected = set()
+    for category, (label, count) in sections.items():
+        assert (options[category]["label"], options[category]["group"]) == (label, physical["title"])
+        section = client.get(endpoint, params={"category": category}).json()
+        assert section["available_count"] == len(section["objects"]) == count
+        selected.update(obj["id"] for obj in section["objects"])
+
+    objects = {obj["id"]: obj for obj in physical["objects"]}
+    assert selected == objects.keys()
+    assert physical["available_count"] == len(objects) == 112
+    assert physical["marine"] == []
+    assert all(shape(obj["geometry"]).is_valid for obj in [*objects.values(), *records["objects"]])
+    assert {"river:biya", "river:katun", "river:shilka", "river:argun", "summit:pronchishcheva"} <= selected
+    assert objects["summit:putorana"]["geometry"] == objects["mountain:putorana"]["geometry"]
+    assert client.get("/api/lists/world", params={"category": "russia-seas"}).status_code == 422
+
+
+@pytest.mark.parametrize(("category", "object_id", "coordinates", "correct"), [
+    ("russia-seas", "sea:Q44725", (-173, 59), True),
+    ("russia-straits", "strait:bering", (-169.4, 65.8), True),
+    ("russia-records", "landmark:cape-dezhnev", (30, 60), False),
+])
+def test_nomenclature_training_grades_and_finishes(client, monkeypatch, category, object_id, coordinates, correct):
+    monkeypatch.setattr(training.random, "shuffle", lambda objects: objects.sort(key=lambda obj: obj["id"] != object_id))
+    started = client.post("/api/lists/russia/training", json={"category": category, "count": 1})
+    assert started.status_code == 201
+    task_url = f'/api/training/{started.json()["id"]}/tasks/1'
+    feedback = client.post(f"{task_url}/answer", json=point(*coordinates)).json()
+    assert feedback["object_id"] == object_id
+    assert feedback["correct"] is correct
+    result = client.post(f"{task_url}/next").json()["result"]
+    assert result["correct"] == int(correct)
+    assert [obj["id"] for obj in result["missed"]] == ([] if correct else [object_id])
+
+
 def test_world_training_grades_country_areas_and_returns_only_countries(client, monkeypatch):
     monkeypatch.setattr(
         training.random, "shuffle",

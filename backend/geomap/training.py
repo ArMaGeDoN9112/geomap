@@ -58,7 +58,7 @@ def answer(run_id: UUID, number: int, longitude: float, latitude: float) -> dict
             raise TaskConflict("Сейчас нельзя ответить на это задание")
 
         object_id = run["object_ids"][number - 1]
-        obj = countries.COUNTRIES.get(object_id) or regions.EXTRA_PHYSICAL.get(object_id)
+        obj = countries.COUNTRIES.get(object_id) or regions.TRAINING_PHYSICAL.get(object_id)
         geometry = obj["geometry"] if obj else storage.object_geometry(db, object_id)
         feedback = {
             "number": number,
@@ -88,7 +88,7 @@ def advance(run_id: UUID, number: int) -> dict:
         if object_ids[0].startswith("country:"):
             objects = [countries.training_country(object_id) for object_id in object_ids]
         else:
-            catalog = {obj["id"]: obj for obj in storage.list_objects(db)} | regions.EXTRA_PHYSICAL
+            catalog = {obj["id"]: obj for obj in storage.list_objects(db)} | regions.TRAINING_PHYSICAL
             objects = [catalog[object_id] for object_id in object_ids]
         if current <= len(objects):
             return {"task": task(objects, current)}

@@ -1,0 +1,26 @@
+import { expect, test } from '@playwright/test'
+
+test('opens a nomenclature section in study and starts training on the same objects', async ({ page }) => {
+  await page.goto('/russia')
+  const study = page.getByLabel('Список объектов')
+  await expect(study).toBeVisible()
+  await study.selectOption('russia-records')
+  await expect(page.getByRole('heading', { name: 'Самое-самое в России' })).toBeVisible()
+  await expect(page.locator('[data-object-id="summit:caucasus"]')).toBeAttached()
+  await study.selectOption('russia-seas')
+  await expect(page).toHaveURL(/category=russia-seas$/)
+  await expect(page.getByRole('heading', { name: 'Моря' })).toBeVisible()
+  await expect(page.locator('[data-object-id="sea:Q44725"]')).toBeVisible()
+  await expect(page.locator('[data-object-id="baikal"]')).toHaveCount(0)
+  await page.reload()
+  await expect(study).toHaveValue('russia-seas')
+
+  await page.getByRole('button', { name: 'Начать тренировку', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Начать тренировку' })
+  await expect(dialog.getByLabel('Категория')).toHaveValue('russia-seas')
+  await expect(dialog.getByLabel('Количество заданий')).toHaveAttribute('max', '12')
+  await dialog.getByLabel('Количество заданий').fill('1')
+  await dialog.getByRole('button', { name: 'Начать', exact: true }).click()
+  await expect(page.getByText('Задание 1 из 1', { exact: true })).toBeVisible()
+  await expect(page.locator('[data-object-id="sea:Q44725"]')).toBeVisible()
+})

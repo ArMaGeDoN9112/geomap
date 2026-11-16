@@ -4,7 +4,7 @@ import {
 } from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { acceleratedRaycast, MeshBVH } from 'three-mesh-bvh'
-import { countryColors, isMarine, mappedObjects, physicalMapColors, studyAreaStyles } from './mapPresentation'
+import { countryColors, mappedObjects, physicalMapColors, studyAreaStyles } from './mapPresentation'
 import { globeImagery } from './globeImagery'
 
 const gridWidth = 1440
@@ -256,6 +256,7 @@ export function createGlobe(container, pinElement, atlas, political, grid, overv
   const objects = atlasPaths(atlas, political, project)
   paintAtlas(base, atlas, political, project, objects, kinds)
   const pickOrder = objects.toReversed()
+  const studyOnly = new Set(atlas.list.marine)
   const catalog = new Map([...atlas.list.objects, ...(atlas.list.marine ?? [])].map((object) => [object.id, object]))
   const texture = new CanvasTexture(base.canvas)
   texture.colorSpace = SRGBColorSpace
@@ -387,7 +388,7 @@ export function createGlobe(container, pinElement, atlas, political, grid, overv
       const latitude = Math.max(-90, Math.min(90, v * 180 - 90))
       const xOnMap = u * width, yOnMap = (1 - v) * width / 2
       const match = pickOrder.find(({ object, path, west, north, east, south }) =>
-        (studying || !isMarine(object)) && xOnMap >= west && xOnMap <= east && yOnMap >= north && yOnMap <= south &&
+        (studying || !studyOnly.has(object)) && xOnMap >= west && xOnMap <= east && yOnMap >= north && yOnMap <= south &&
         base.isPointInPath(path, xOnMap, yOnMap, 'evenodd'))
       return { longitude, latitude, object: match?.object }
     },

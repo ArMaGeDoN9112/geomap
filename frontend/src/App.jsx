@@ -14,6 +14,27 @@ const defaultCategory = political ? 'world' : 'russia'
 const listTitle = political ? 'Страны мира' : 'Природа России'
 const ObjectIcon = political ? Globe2 : Mountain
 
+function CategorySelect({ id, label, options, value, onChange, disabled, autoFocus }) {
+  const group = options.find((option) => option.group)?.group
+  return (
+    <>
+      <label className="input-label" htmlFor={id}>{label}</label>
+      <select id={id} className="field" value={value} onChange={onChange} disabled={disabled} autoFocus={autoFocus}>
+        {options.filter((option) => !option.group).map((option) => (
+          <option key={option.id} value={option.id}>{option.label}</option>
+        ))}
+        {group && (
+          <optgroup label={group}>
+            {options.filter((option) => option.group === group).map((option) => (
+              <option key={option.id} value={option.id}>{option.label}</option>
+            ))}
+          </optgroup>
+        )}
+      </select>
+    </>
+  )
+}
+
 export function App() {
   const [category, setCategory] = useState(() => new URLSearchParams(window.location.search).get('category') || defaultCategory)
   const [count, setCount] = useState(null)
@@ -40,6 +61,7 @@ export function App() {
   const training = run !== null
   const task = run?.task
   const ready = atlas?.category === category
+  const availableKinds = new Set([...(atlas?.list.objects ?? []), ...(atlas?.list.marine ?? [])].map((object) => object.kind))
   const shareUrl = new URL(listPath, window.location.origin)
   if (category !== defaultCategory) shareUrl.searchParams.set('category', category)
 
@@ -319,6 +341,10 @@ export function App() {
                     <>
                       <div className="panel-icon"><BookOpen size={24} /></div>
                       <h2>Изучение</h2>
+                      {!political && (
+                        <CategorySelect id="study-category" label="Список объектов" options={atlas.list.categories}
+                          value={category} onChange={changeCategory} disabled={pending || modal !== null} />
+                      )}
                       {political ? (
                         <>
                           <p className="desktop-hint">Наведи указатель на страну, чтобы открыть справку.</p>
@@ -332,7 +358,7 @@ export function App() {
                           <p className="hybrid-hint">Наведи указатель на объект или коснись его, чтобы узнать название.</p>
                           <fieldset className="study-highlights">
                             <legend>Подсветка на карте</legend>
-                            {Object.entries(studyKinds).map(([kind, label]) => (
+                            {Object.entries(studyKinds).filter(([kind]) => availableKinds.has(kind)).map(([kind, label]) => (
                               <label key={kind}>
                                 <input type="checkbox" checked={studyHighlights.includes(kind)}
                                   onChange={({ target: { checked } }) => setStudyHighlights((current) =>
@@ -384,10 +410,8 @@ export function App() {
         <Dialog title={modal === 'start' ? 'Начать тренировку' : modal === 'exit' ? 'Выйти из тренировки?' : 'Ссылка на список'} onClose={() => setModal(null)} pending={pending}>
           {modal === 'start' && (
             <form onSubmit={begin}>
-              <label className="input-label" htmlFor="category">Категория</label>
-              <select id="category" className="field" value={category} onChange={changeCategory} disabled={pending} autoFocus>
-                {atlas.list.categories.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
-              </select>
+              <CategorySelect id="category" label="Категория" options={atlas.list.categories}
+                value={category} onChange={changeCategory} disabled={pending} autoFocus />
               <label className="input-label" htmlFor="count">Количество заданий</label>
               <input id="count" className="field" type="number" min="1" max={ready ? atlas.list.available_count : undefined}
                 required disabled={!ready || pending} value={ready ? (count ?? atlas.list.training_count) : ''}
