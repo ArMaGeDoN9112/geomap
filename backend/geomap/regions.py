@@ -2,12 +2,15 @@ import json
 from pathlib import Path
 from typing import Literal
 
+from shapely.geometry import box, shape
+
 
 WorldCategory = Literal[
     "world", "eurasia", "europe", "asia", "africa", "north-america", "south-america", "oceania",
     "antarctica",
 ]
 PhysicalCategory = Literal[WorldCategory, "russia"]
+DATA = Path(__file__).parent / "data"
 
 REGIONS = {
     "world": ("Весь мир", [-180, -83, 180, 83.65]),
@@ -25,8 +28,12 @@ REGIONS = {
 EXTRA_PHYSICAL = {
     obj["id"]: obj
     for filename in ("world-water-objects.json", "atlas-objects.json")
-    for obj in json.loads((Path(__file__).parent / "data" / filename).read_text(encoding="utf-8"))
+    for obj in json.loads((DATA / filename).read_text(encoding="utf-8"))
 }
+MARINE = [
+    (obj, shape(obj["geometry"]))
+    for obj in json.loads((DATA / "marine-objects.json").read_text(encoding="utf-8"))
+]
 for mountain in list(EXTRA_PHYSICAL.values()):
     if mountain["kind"] == "mountain":
         summit = mountain["summit"]
@@ -54,6 +61,13 @@ def physical_objects(russian_objects, category: PhysicalCategory):
         obj for obj in [*russian_objects, *EXTRA_PHYSICAL.values()]
         if category == "world" or physical_continent(obj) in continents
     ]
+
+
+def marine_objects(category: PhysicalCategory):
+    if category == "russia":
+        return [obj for obj, _ in MARINE if obj.get("russia")]
+    viewport = box(*REGIONS[category][1])
+    return [obj for obj, area in MARINE if area.intersects(viewport)]
 
 
 def categories(*, political: bool):

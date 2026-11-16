@@ -124,6 +124,13 @@ class GeographicObject(BaseModel):
     summit: Summit | None = None
 
 
+class MarineObject(BaseModel):
+    id: str
+    name: str
+    kind: Literal["sea", "ocean"]
+    geometry: dict
+
+
 class Attribution(BaseModel):
     text: str
     url: str
@@ -156,6 +163,7 @@ class ObjectList(Catalog):
     id: Literal["russia"]
     map: PhysicalMap
     objects: list[GeographicObject]
+    marine: list[MarineObject]
 
 
 class CountryProfile(BaseModel):
@@ -255,6 +263,7 @@ def object_list(category: regions.PhysicalCategory = "russia"):
             ],
         },
         "objects": [{**obj, "region": regions.REGIONS[regions.physical_continent(obj)][0]} for obj in objects],
+        "marine": regions.marine_objects(category),
     }
 
 

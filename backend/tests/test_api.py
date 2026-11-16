@@ -89,6 +89,25 @@ def test_world_catalog_serves_country_borders_and_capitals_without_database():
     assert all(shape(obj["geometry"]).is_valid for obj in objects.values())
 
 
+def test_physical_study_provides_marine_areas_without_adding_training_tasks(client, catalog):
+    russian_seas = {obj["name"]: shape(obj["geometry"]) for obj in catalog["marine"] if obj["kind"] == "sea"}
+    for name, coordinates in {
+        "Баренцево море": (37, 74.5),
+        "Карское море": (73, 75),
+        "Море Лаптевых": (121, 77),
+        "Восточно-Сибирское море": (159, 75),
+        "Охотское море": (146, 55.5),
+        "Берингово море": (-173, 59),
+    }.items():
+        assert russian_seas[name].covers(shape({"type": "Point", "coordinates": coordinates})), name
+
+    world = client.get("/api/lists/russia?category=world").json()
+    assert len([obj for obj in world["marine"] if obj["kind"] == "ocean"]) == 5
+    assert all(shape(obj["geometry"]).is_valid for obj in world["marine"])
+    assert world["available_count"] == len(world["objects"])
+    assert {obj["id"] for obj in world["marine"]}.isdisjoint(obj["id"] for obj in world["objects"])
+
+
 def test_world_training_grades_country_areas_and_returns_only_countries(client, monkeypatch):
     monkeypatch.setattr(
         training.random, "shuffle",
